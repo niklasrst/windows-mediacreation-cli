@@ -26,6 +26,7 @@ Lastly it is formatting the usb-drive and placing the installation media on it.
 ## Roadmap
 [] Support for AutoUnattend files
 [] Support to inject oem drivers
+[] Support to inject cab files to the os
 [] Support to remove unwanted editions from the esd
 [] Add Troubleshooting tools for Windows Autopilot
 
