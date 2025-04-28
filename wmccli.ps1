@@ -3,7 +3,7 @@
    A CLI to create Windows Installation media with different versions of Windows.
 
 .DESCRIPTION
-   xxx
+    This script downloads the Windows ESD file from Microsoft and creates a bootable USB drive with the selected version of Windows.
 
 .PARAMETER -Version
     The version of Windows to download. Valid values are 10 or 11.
@@ -18,7 +18,7 @@
     The default is the 00000 build.
 
 .PARAMETER -LanguageCode
-    The language code of Windows to download. Valid values are en-us, de-de, fr-fr, es-es, it-it, nl-nl, pl-pl, pt-pt, ru-ru, tr-tr, zh-cn, zh-tw.
+    The language code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
     The default is en-us.
 
 .PARAMETER -Edition
@@ -69,10 +69,21 @@ Param(
     [String]$UsbDriveLetter = "E:"
 )
 
+Write-Verbose "Parameters"
+Write-Verbose "Version: $Version"
+Write-Verbose "Architecture: $Architecture"
+Write-Verbose "Build: $Build"
+Write-Verbose "LanguageCode: $LanguageCode"
+Write-Verbose "Edition: $Edition"
+Write-Verbose "UsbDriveLetter: $UsbDriveLetter"
+Write-Verbose "------------------------------------------------------"
+Write-Verbose "Starting Windows Media Creation CLI"
+
 # Settings
 $scriptTempDir = "$env:temp\wmccli"
 if (-not (Test-Path -Path $scriptTempDir)) {
     New-Item -ItemType Directory -Path $scriptTempDir | Out-Null
+    Write-Verbose "Created temporary directory $scriptTempDir"
 }
 
 switch ($Build){
@@ -86,22 +97,20 @@ switch ($Build){
     "11-24H2" { $Build = "26100" }
     default { $Build = "26100"}
 }
+Write-Verbose "Build version converted to $Build"
 
 switch ($Architecture) {
     "x64" {
-        Write-Verbose "Converting x64 to x64"
         $Architecture = "x64" }
     "x86" {
-        Write-Verbose "Converting x86 to x86"
         $Architecture = "x86" }
     "arm64" {
-        Write-Verbose "Converting arm64 to A64"
         $Architecture = "A64" }
     Default { 
-        Write-Error "Missing or invalid architecture. Please use x64, x86 or arm64."
-        exit 1
+        $Architecture = "x64"
     }
 }
+Write-Verbose "Architecture converted to $Architecture"
 
 # Download Manifests
 $windowsManifests = @(
@@ -131,3 +140,18 @@ Write-Verbose "Downloading ESD file from $esdUrl to $scriptTempDir"
 Invoke-WebRequest -Uri $esdUrl -OutFile "$scriptTempDir\windows.esd"
 
 TODO: Format USB-Drive and Extract ESD file
+
+TODO: Remove unwanted editions from the esd file (ADD PARAMETER TO SELECT A VERSION)
+
+TODO: Inject AutoUnattend.xml (DOWNLOAD FROM GITHUB)
+
+TODO: Inject OEM drivers (ADD PARAMETER TO DEFINE A DRIVER FOLDER)
+
+TODO: Inject windows capability packages (ADD PARAMETER TO DEFINE A FEATURE FOLDER)
+
+TODO: Add Autopilot Troubleshooting scripts (DOWNLOAD FROM GITHUB)
+
+# Cleanup
+Write-Verbose "Cleaning up temporary files"
+Remove-Item -Path $scriptTempDir -Recurse -Force | Out-Null
+Write-Verbose "Finished Windows Media Creation CLI"
