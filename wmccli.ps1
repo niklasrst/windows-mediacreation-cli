@@ -79,233 +79,162 @@ Write-Verbose "Build: $Build"
 Write-Verbose "LanguageCode: $LanguageCode"
 Write-Verbose "Edition: $Edition"
 Write-Verbose "UsbDriveLetter: $UsbDriveLetter"
+Write-Verbose "Working Directory: $env:temp\wmccli"
 Write-Verbose "------------------------------------------------------"
 Write-Verbose "Starting Windows Media Creation CLI"
 
 # Variables
 $IsoArchitecture = $null
-$editionName = $null
-
-# Requirements
-## Windows ADK
-if (Test-Path -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Setup") {
-    Write-Verbose "Windows ADK is installed"
-} else {
-    $installAdk = (Read-Host -Prompt "Do you want to install the Windows ADK? (Y/N)" | Out-Null)
-    if ($installAdk -eq "Y") {
-        Write-Host "Installing Windows ADK..."
-        Function Get-WingetCmd {
-            $WingetCmd = $null
-            #Get WinGet Path
-            try {
-                #Get Admin Context Winget Location
-                $WingetInfo = (Get-Item "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_8wekyb3d8bbwe\winget.exe").VersionInfo | Sort-Object -Property FileVersionRaw
-                #If multiple versions, pick most recent one
-                $WingetCmd = $WingetInfo[-1].FileName
-            }
-            catch {
-                #Get User context Winget Location
-                if (Test-Path "$env:LocalAppData\Microsoft\WindowsApps\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\winget.exe") {
-                    $WingetCmd = "$env:LocalAppData\Microsoft\WindowsApps\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\winget.exe"
-                }
-            }
-            return $WingetCmd
-        }
-        
-        if ($null -eq (Get-WingetCmd)) { 
-            Write-Verbose "Installing NuGet..."
-            Install-PackageProvider -Name NuGet -Force -Confirm:$false
-            Write-Verbose "Installing Microsoft.WinGet.Client..."
-            Install-Module -Name Microsoft.WinGet.Client -Force -Confirm:$false
-            Repair-WinGetPackageManager -AllUsers -Force
-        }
-        Write-Verbose "Installing Windows ADK from Winget..."
-        Start-Process -FilePath "winget.exe" -ArgumentList "install --id Microsoft.WindowsADK --source winget" -Wait
-    } else {
-        Write-Host "Windows ADK is not installed. Please install it before proceeding."
-    }
-    Write-Host "Windows ADK is not installed. Please install it before proceeding."
-    Exit 1
-}
-## GIT
-if (Test-Path -Path "C:\Program Files\Git\bin\git.exe") {
-    Write-Verbose "Git is installed"
-} else {
-    $installGit = (Read-Host -Prompt "Do you want to install the Git? (Y/N)" | Out-Null)
-    if ($installGit -eq "Y") {
-        Write-Host "Installing Git..."
-        Function Get-WingetCmd {
-            $WingetCmd = $null
-            #Get WinGet Path
-            try {
-                #Get Admin Context Winget Location
-                $WingetInfo = (Get-Item "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_8wekyb3d8bbwe\winget.exe").VersionInfo | Sort-Object -Property FileVersionRaw
-                #If multiple versions, pick most recent one
-                $WingetCmd = $WingetInfo[-1].FileName
-            }
-            catch {
-                #Get User context Winget Location
-                if (Test-Path "$env:LocalAppData\Microsoft\WindowsApps\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\winget.exe") {
-                    $WingetCmd = "$env:LocalAppData\Microsoft\WindowsApps\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\winget.exe"
-                }
-            }
-            return $WingetCmd
-        }
-        
-        if ($null -eq (Get-WingetCmd)) { 
-            Write-Verbose "Installing NuGet..."
-            Install-PackageProvider -Name NuGet -Force -Confirm:$false
-            Write-Verbose "Installing Microsoft.WinGet.Client..."
-            Install-Module -Name Microsoft.WinGet.Client -Force -Confirm:$false
-            Repair-WinGetPackageManager -AllUsers -Force
-        }
-        Write-Verbose "Installing Git fomr Winget..."
-        Start-Process -FilePath "winget.exe" -ArgumentList "install --id Git.Git --source winget" -Wait
-    } else {
-        Write-Host "Git is not installed. Please install it before proceeding."
-    }
-    Write-Host "Git is not installed. Please install it before proceeding."
-    Exit 1
-}
-
-# Settings
 $scriptTempDir = "$env:temp\wmccli"
+$setupWimTempDir = "$env:temp\wmccli\setupwim"
+$installWimTempDir = "$env:temp\wmccli\installwim"
+Set-Location $scriptTempDir
 if (-not (Test-Path -Path $scriptTempDir)) {
     New-Item -ItemType Directory -Path $scriptTempDir | Out-Null
-    Write-Verbose "Created temporary directory $scriptTempDir"
+    Write-Verbose "Created temporary directory $scriptTempDir..."
+}
+if (-not (Test-Path -Path $setupWimTempDir)) {
+    New-Item -ItemType Directory -Path $setupWimTempDir | Out-Null
+    Write-Verbose "Created temporary directory $setupWimTempDir..."
+}
+if (-not (Test-Path -Path $installWimTempDir)) {
+    New-Item -ItemType Directory -Path $installWimTempDir | Out-Null
+    Write-Verbose "Created temporary directory $installWimTempDir..."
+}
+
+if (-not (Test-Path -Path $UsbDriveLetter)) {
+    Write-Error "The drive $UsbDriveLetter does not exist. Please check the drive letter and try again."
+    exit 1
 }
 
 switch ($Build){
-    "10-21H1" { $Build = "19043" }
-    "10-21H2" { $Build = "19044" }
-    "10-22H2" { $Build = "19045" }
-    "10-23H2" { $Build = "19046" }
-    "11-21H2" { $Build = "22000" }
-    "11-22H2" { $Build = "22621" }
-    "11-23H2" { $Build = "22631" }
-    "11-24H2" { $Build = "26100" }
-    default { $Build = "26100"}
+    "10-21H1" { $BuildVer = "19043" }
+    "10-21H2" { $BuildVer = "19044" }
+    "10-22H2" { $BuildVer = "19045" }
+    "10-23H2" { $BuildVer = "19046" }
+    "11-21H2" { $BuildVer = "22000" }
+    "11-22H2" { $BuildVer = "22621" }
+    "11-23H2" { $BuildVer = "22631" }
+    "11-24H2" { $BuildVer = "26100" }
 }
-Write-Verbose "Build version converted to $Build"
+Write-Verbose "Build version converted to $BuildVer..."
 
 switch ($Architecture) {
     "amd64" { $IsoArchitecture = "x64" }
     "arm64" { $IsoArchitecture = "A64" }
-    Default { $IsoArchitecture = "x64" }
 }
-Write-Verbose "Architecture converted to $IsoArchitecture"
+Write-Verbose "Architecture converted to $IsoArchitecture..."
 
 # Download Manifests
-$windowsManifests = @(
-    @{ Name = "Windows10"; Version = "https://go.microsoft.com/fwlink/?LinkId=841361" },
-    @{ Name = "Windows11"; Version = "https://go.microsoft.com/fwlink/?LinkId=2156292" }
-)
-
-foreach ($manifest in $windowsManifests) {
-    $fileName = "$scriptTempDir\$($manifest.Name).cab"
-    Write-Verbose "Downloading $($manifest.Name) from $($manifest.Version) to $fileName"
-    Invoke-WebRequest -Uri $manifest.Version -OutFile $fileName -Verbose:$Verbose
-    Write-Verbose "Extracting $($manifest.Name) to $scriptTempDir\$($manifest.Name)_products.xml"
-    Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $fileName $scriptTempDir\$($manifest.Name)_products.xml" -NoNewWindow -Wait
-    Write-Verbose "Removing temporary file $fileName"
-    Remove-Item -Path $fileName -Force | Out-Null
+switch ($Version) {
+    "10" 
+    { 
+        $Url = "https://go.microsoft.com/fwlink/?LinkId=841361" 
+    }
+    "11" 
+    { 
+        $Url = "https://go.microsoft.com/fwlink/?LinkId=2156292" 
+    }
 }
+Write-Verbose "Downloading $($Version) from $($Url) to $scriptTempDir..."
+Invoke-WebRequest -Uri $Url -OutFile "$scriptTempDir\$($Version).cab" -Verbose:$Verbose
+Write-Verbose "Extracting $($Version) to $scriptTempDir\$($Version)_products.xml..."
+Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\$($Version).cab $scriptTempDir\$($Version)_products.xml" -Wait | Out-Null
+Write-Verbose "Removing temporary file $scriptTempDir\$($Version).cab..."
+Remove-Item -Path "$scriptTempDir\$($Version).cab" -Force | Out-Null
 
 # Construct URL and Download ESD file
-$productsFile = "$scriptTempDir\Windows" + $($Version) + "_products.xml"
+$productsFile = "$scriptTempDir\$($Version)_products.xml"
 [xml]$productsXml = Get-Content -Path $productsFile
-Write-Verbose "Parsing XML file $productsFile"
+Write-Verbose "Parsing XML file $productsFile..."
 
-$esdUrl = ($productsXml.MCT.Catalogs.Catalog.FirstChild.Files.File.FilePath | Where-Object { $_ -match ".*http.*$Build.*$Edition.*$IsoArchitecture.*$LanguageCode.esd" } | Select-Object -First 1)
+$esdUrl = ($productsXml.MCT.Catalogs.Catalog.FirstChild.Files.File.FilePath | Where-Object { $_ -match ".*http.*$BuildVer.*$Edition.*$IsoArchitecture.*$LanguageCode.esd" } | Select-Object -First 1)
 Write-Verbose "Found ESD URL: $esdUrl"
 
-Write-Verbose "Downloading ESD file from $esdUrl to $scriptTempDir"
-Invoke-WebRequest -Uri $esdUrl -OutFile "$scriptTempDir\windows.esd"
-
-# Create bootable USB drive
-Write-Verbose "Formatting USB drive $UsbDriveLetter to NTFS and making it active"
-if (-not (Test-Path -Path $UsbDriveLetter)) {
-    Write-Host "The drive $UsbDriveLetter does not exist. Please check the drive letter and try again."
-    Exit 1
+Write-Verbose "Downloading ESD file from $esdUrl to $scriptTempDir..."
+$installVer = "win$($Version)-$($BuildVer)-$($Edition)-$($IsoArchitecture)-$($LanguageCode)"
+$installEsdFile = "$scriptTempDir\install.esd"
+$setupWimFile = "$scriptTempDir\setup.wim"
+$installWimFile = "$scriptTempDir\install.wim"
+if (Test-Path -Path $installEsdFile) {
+    Write-Verbose "ESD file already exists. Skipping download..."
+} else {
+    try {
+        Invoke-WebRequest -Uri $esdUrl -OutFile $installEsdFile
+    }
+    catch {
+        Write-Error "Failed to download ESD file. Please check the connectivity and try again."
+        exit 1
+    }
 }
 
-$diskpartArgs= @"
-select volume $UsbDriveLetter
-clean
-create partition primary
-format fs=ntfs quick
-active
-assign letter=$UsbDriveLetter
-exit
-"@
+# Extract setup.wim
+Write-Verbose "Extracting setup from ESD to WIM format..."
+if (-not (Test-Path -Path $setupWimFile)) {
+    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:1 /DestinationImageFile:$setupWimFile /Compress:max /CheckIntegrity | Out-Null
+    Write-Verbose "Exported setup.wim..."
+} 
 
-$partLayout = "$scriptTempDir\partLayout.txt"
-$diskpartArgs | Set-Content -Path $partLayout -Force
-Start-Process -FilePath "diskpart.exe" -ArgumentList "/s $partLayout" -Wait
-Remove-Item -Path $partLayout -Force | Out-Null
-Write-Verbose "USB drive $UsbDriveLetter formatted to NTFS and set as active"
+# Extract install.wim
+Write-Verbose "Extracting install from ESD to WIM format..."
+if (-not (Test-Path -Path $installWimFile)) {
+    Dism.exe /Get-WimInfo /WimFile:$installEsdFile
+    $index = Read-Host -Prompt "Please enter Index number of the Windows Edition that you want to export (for example 8)"
+    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$index /DestinationImageFile:$installWimFile /Compress:max /CheckIntegrity | Out-Null
+    
+    $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installWimFile | Out-String
+    $wimEditionName = ($installWimInfo -split "`n" | Where-Object { $_ -match "Name\s*:\s*(.+)" }) -replace "Name\s*:\s*", ""
+    Write-Verbose "Exported install.wim for: $wimEditionName"
+} 
+
+
+# Mount wim file(s)
+Write-Verbose "Mounting setup.wim file..."
+try {
+    Mount-WindowsImage -ImagePath $setupWimFile -Path "$setupWimTempDir" -Index 1 | Out-Null
+}
+catch {
+    Write-Warning "Mounting setup.wim failed. Please check the file and try again."
+    exit 1
+}
+
+Write-Verbose "Mounting install.wim file..."
+$mountInstallWim = (Read-Host -Prompt "Do you want to mount the install.wim file to inject files/drivers? (Y/N)")
+if ($mountInstallWim -eq "Y") {
+    try {
+        Mount-WindowsImage -ImagePath $installWimFile -Path $installWimTempDir -Index 1 | Out-Null
+    }
+    catch {
+        Write-Warning "Mounting setup.wim failed. Please check the file and try again."
+        exit 1
+    }
+    Read-Host -Prompt "Please copy the files/drivers to $installWimTempDir\drivers and press Enter to continue"
+}
+
+# Create bootable USB drive
+Write-Verbose "Formatting USB drive $UsbDriveLetter..."
+$UsbDriveId = (Get-Partition -DriveLetter $UsbDriveLetter.TrimEnd(':')).DiskNumber
+Clear-Disk -Number $UsbDriveId -RemoveData -Confirm:$false
+$partition = New-Partition -DiskNumber $UsbDriveId -UseMaximumSize -DriveLetter $UsbDriveLetter.TrimEnd(':')
+$partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel "$($installVer)" -Confirm:$false
 
 # Adding Windows Setup files
-Write-Verbose "Copying Windows Setup files to USB drive $UsbDriveLetter"
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Setup\$Architecture\setup.exe" -Destination "$UsbDriveLetter" -Force | Out-Null
+Write-Verbose "Copying Windows Setup files to USB drive $UsbDriveLetter..."
+Copy-Item -Path "$setupWimTempDir\*" -Destination "$UsbDriveLetter" -Recurse -Force | Out-Null
 
-Write-Verbose "Copying Windows Source files to USB drive $UsbDriveLetter"
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Setup\$Architecture\sources" -Destination "$UsbDriveLetter\sources" -Recurse -Force | Out-Null
+Write-Verbose "Adding driver directory..."
+New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
 
-Write-Verbose "Copying Windows Bootmgr files to USB drive $UsbDriveLetter"
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\$Architecture\Media\bootmgr" -Destination "$UsbDriveLetter" -Force | Out-Null
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\$Architecture\Media\bootmgr.efi" -Destination "$UsbDriveLetter" -Force | Out-Null
+Write-Verbose "Unmount Setup WIM..."
+Dismount-WindowsImage -Path $setupWimTempDir -Discard | Out-Null
 
-$autorunInf= @"
-[AutoRun.$Architecture]
-open=setup.exe
-icon=setup.exe,0
-
-[AutoRun]
-open=sources\SetupError.exe $IsoArchitecture
-icon=sources\SetupError.exe,0
-"@
-$autorunInf | Set-Content -Path "$UsbDriveLetter\autorun.inf" -Force
-
-Write-Verbose "Copying Windows efi files to USB drive $UsbDriveLetter"
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\$Architecture\Media\EFI" -Destination "$UsbDriveLetter\efi" -Recurse -Force | Out-Null
-
-Write-Verbose "Copying Windows boot files to USB drive $UsbDriveLetter"
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\$Architecture\Media\Boot\$LanguageCode" -Destination "$UsbDriveLetter\boot" -Recurse -Force | Out-Null
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\$Architecture\Media\Boot\fonts" -Destination "$UsbDriveLetter\boot" -Recurse -Force | Out-Null
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\$Architecture\Media\Boot\resources" -Destination "$UsbDriveLetter" -Recurse -Force | Out-Null
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\$Architecture\Media\Boot\bcd" -Destination "$UsbDriveLetter" -Force | Out-Null
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\$Architecture\Media\Boot\boot.sdi" -Destination "$UsbDriveLetter" -Force | Out-Null
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\$Architecture\Media\Boot\bootfix.bin" -Destination "$UsbDriveLetter" -Force | Out-Null
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\$Architecture\Media\Boot\memtest.exe" -Destination "$UsbDriveLetter" -Force | Out-Null
-##bootsect.exe
-##efsboot.com
-
-##Write-Verbose "Copying Windows support files to USB drive $UsbDriveLetter"
-##TODO: Copy-Item -Path "" -Destination "$UsbDriveLetter\support" -Recurse -Force | Out-Null
-
-Write-Verbose "Adding driver directory"
-New-Item -Path "$UsbDriveLetter\drivers" -ItemType Directory -Force | Out-Null
-
-Write-Verbose "Copying Windows boot.wim to USB drive $UsbDriveLetter"
-Copy-Item -Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment\$Architecture\$LanguageCode\winpe.wim" -Destination "$UsbDriveLetter\sources\boot.wim" -Recurse -Force | Out-Null
-
-# Remove unwanted editions from the esd file
-$modifyEditions= (Read-Host -Prompt "Do you want to remove unwanted editions from the iso? (Y/N)" | Out-Null)
-if ($modifyEditions -eq "Y") {
-    Dism.exe /Get-WimInfo /WimFile:$($scriptTempDir)\windows.esd
-    $index = Read-Host -Prompt "Please enter Index number where you want to inject drivers (for example 5)"
-    Dism.exe /Export-Image /SourceImageFile:$($scriptTempDir)\windows.esd /SourceIndex:$index /DestinationImageFile:$($scriptTempDir)\windows_split.esd
-    TODO: $editionName = "" # GET THE EDITION NAME FROM THE ESD FILE
-    ###https://github.com/mtniehaus/MediaTool/blob/main/Modules/MediaTool/MediaTool.psm1
-    Move-Item -Path "$scriptTempDir\windows_split.esd" -Destination "$UsbDriveLetter\sources\install.esd" -Force
-} else {
-    Write-Verbose "Skipping edition modification"
-    $editionName = "Windows 11 Pro"
-    Move-Item -Path "$scriptTempDir\windows.esd" -Destination "$UsbDriveLetter\sources\install.esd" -Force
+if ($mountInstallWim -eq "Y") {
+    Write-Verbose "Unmount Install WIM..."
+    Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity | Out-Null
 }
 
 # Add bootstick tools
+Write-Verbose "Creating autounattend.xml file..."
 $languageHexMap = @{
     'en-US' = '0409'
     'nl-NL' = '0413'
@@ -407,6 +336,7 @@ $languageHexMap = @{
     'yo-NG' = '046a'
 }
 $localeId = $languageHexMap["$($LanguageCode)"] + ":0000" + $languageHexMap["$($LanguageCode)"]
+Write-Verbose "Using SetupUILanguage: $LanguageCode, InputLocale: $localeId, SystemLocale: $LanguageCode, UILanguage: $LanguageCode, UserLocale: $LanguageCode, OSImage: $wimEditionName..."
 $autounattendXml= @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -494,7 +424,7 @@ $autounattendXml= @"
                         <!-- Windows edition -->
                         <MetaData wcm:action="add">
                             <Key>/IMAGE/NAME</Key>
-                            <Value>$editionName</Value>
+                            <Value>$wimEditionName</Value>
                         </MetaData>
                     </InstallFrom>
                     <InstallTo>
@@ -532,6 +462,7 @@ $autounattendXml= @"
 $autounattendXml | Set-Content -Path "$UsbDriveLetter\autounattend.xml" -Force
 
 # Cleanup
-Write-Verbose "Cleaning up temporary files"
-Remove-Item -Path $scriptTempDir -Recurse -Force | Out-Null
-Write-Host "Finished Windows Media Creation CLI"
+#Write-Verbose "Cleaning up temporary files"
+#Remove-Item -Path $scriptTempDir -Recurse -Force | Out-Null
+
+Write-Host "Finished Windows Media Creation CLI" -ForegroundColor Green
