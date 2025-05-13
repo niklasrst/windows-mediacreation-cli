@@ -9,25 +9,21 @@ So I came up with the idea to create a parameter based PowerShell script to ask 
 ## How to use it?
 
 ```powershell
-.\wmccli.ps1 -Version 11 -Architecture "x64" -Build "11-24H2" -LanguageCode "en-us" -Edition "CLIENTBUSINESS_VOL" -UsbDriveLetter "E:"
+.\wmccli.ps1 -Version 11 -Architecture amd64 -Build '11-24H2' -LanguageCode en-us -Edition CLIENTBUSINESS_VOL -UsbDriveLetter "D:" -Verbose
 ```
 
 ## How it works?
-Firstly the script is looking for the windows manifest files:
-Windows10 = "https://go.microsoft.com/fwlink/?LinkId=841361"
-Windows11 = "https://go.microsoft.com/fwlink/?LinkId=2156292"
+Firstly the script is looking for the windows manifest files for [Windows10](https://go.microsoft.com/fwlink/?LinkId=841361) and [Windows11](https://go.microsoft.com/fwlink/?LinkId=2156292).
 
 Next is to filter the list, based on the parameters to get the version that you want to download.
 
-Once it figured the right download url from the manifest file it will start downloading the right `esd` file.
+Once it figured the right download url from the manifest file it will start downloading the right `esd` file, which will be converted to `.wim` with the edition that you need.
 
 Lastly it is formatting the usb-drive and placing the installation media on it.
 
 ## Roadmap
-[] Support for AutoUnattend files
 [] Support to inject oem drivers
 [] Support to inject cab files to the os
-[] Support to remove unwanted editions from the esd
 [] Add Troubleshooting tools for Windows Autopilot
 
 ## 🤝 Contributing
