@@ -33,8 +33,8 @@
    Enable verbose output.
 
 .EXAMPLE
-    .\wmccli.ps1 -Version 11 -Architecture amd64 -Build 22621 -LanguageCode en-us -Edition CLIENTBUSINESS_VOL -UsbDriveLetter E:
-    This example downloads the Windows 11 x64 ESD file with build number 22621 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable media on the drive E:.
+    .\wmccli.ps1 -Version 11 -Architecture amd64 -Build '11-24H2' -LanguageCode en-us -Edition CLIENTBUSINESS_VOL -UsbDriveLetter "D:" -Verbose
+    This example downloads the Windows 11 x64 ESD file with build 11-24H2 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable media on the drive E:.
 
 .OUTPUTS
     ---
