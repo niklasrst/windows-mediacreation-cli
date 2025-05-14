@@ -29,8 +29,8 @@
    Enable verbose output.
 
 .EXAMPLE
-    .\wmccli.ps1 -Architecture amd64 -Build '24H2' -LanguageCode en-us -Edition CLIENTBUSINESS_VOL -UsbDriveLetter "D:" -Verbose
-    This example downloads the Windows 11 x64 ESD file with build 24H2 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable media on the drive E:.
+    .\mctcli.ps1 -Architecture amd64 -Build '24H2' -LanguageCode en-us -Edition CLIENTBUSINESS_VOL -UsbDriveLetter "D:" -Verbose
+    This example downloads the Windows 11 x64 ESD file with build 24H2 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable media on the drive D:.
 
 .OUTPUTS
     ---
@@ -57,10 +57,10 @@ Param(
     [ValidateSet("en-us", "de-de")]
     [String]$LanguageCode = "en-us",
     [Parameter(Mandatory = $True)]
-    [ValidateSet("CLIENTCONSUMER_RET", "CLIENTBUSINESS_VOL")]
-    [String]$Edition = "CLIENTBUSINESS_VOL",
+    [ValidateSet("Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N")]
+    [String]$Edition = "Pro",
     [Parameter(Mandatory = $True)]
-    [String]$UsbDriveLetter = "E:"
+    [String]$UsbDriveLetter = "D:"
 )
 
 #Requires -RunAsAdministrator
@@ -71,16 +71,17 @@ Write-Verbose "Build: $Build"
 Write-Verbose "LanguageCode: $LanguageCode"
 Write-Verbose "Edition: $Edition"
 Write-Verbose "UsbDriveLetter: $UsbDriveLetter"
-Write-Verbose "Working Directory: $env:temp\wmccli"
+Write-Verbose "Working Directory: $env:temp\mctcli"
 Write-Verbose "------------------------------------------------------"
 Write-Verbose "Starting Windows Media Creation CLI"
 
 # Variables
 $IsoArchitecture = $null
-$scriptTempDir = "$env:temp\wmccli"
-$setupWimTempDir = "$env:temp\wmccli\setupwim"
-$installWimTempDir = "$env:temp\wmccli\installwim"
-Set-Location $scriptTempDir
+$IsoEdition = $null
+$scriptTempDir = "$env:temp\mctcli"
+$setupWimTempDir = "$env:temp\mctcli\setupwim"
+$bootWimTempDir = "$env:temp\mctcli\bootwim"
+$installWimTempDir = "$env:temp\mctcli\installwim"
 if (-not (Test-Path -Path $scriptTempDir)) {
     New-Item -ItemType Directory -Path $scriptTempDir | Out-Null
     Write-Verbose "Created temporary directory $scriptTempDir..."
@@ -89,15 +90,31 @@ if (-not (Test-Path -Path $setupWimTempDir)) {
     New-Item -ItemType Directory -Path $setupWimTempDir | Out-Null
     Write-Verbose "Created temporary directory $setupWimTempDir..."
 }
+if (-not (Test-Path -Path $bootWimTempDir)) {
+    New-Item -ItemType Directory -Path $bootWimTempDir | Out-Null
+    Write-Verbose "Created temporary directory $bootWimTempDir..."
+}
 if (-not (Test-Path -Path $installWimTempDir)) {
     New-Item -ItemType Directory -Path $installWimTempDir | Out-Null
     Write-Verbose "Created temporary directory $installWimTempDir..."
 }
-
 if (-not (Test-Path -Path $UsbDriveLetter)) {
     Write-Error "The drive $UsbDriveLetter does not exist. Please check the drive letter and try again."
     exit 1
 }
+Set-Location $scriptTempDir
+
+switch ($Edition){
+    "Home" { $IsoEdition = "CLIENTCONSUMER_RET" }
+    "Pro" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "ProN" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "Enterprise" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "EnterpriseN" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "Education" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "EducationN" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+}
+
+Write-Verbose "Pulling $Edition from $IsoEdition..."
 
 switch ($Build){
     "21H2" { $BuildVer = "22000" }
@@ -127,12 +144,12 @@ $productsFile = "$scriptTempDir\manifest_products.xml"
 [xml]$productsXml = Get-Content -Path $productsFile
 Write-Verbose "Parsing XML file $productsFile..."
 
-$esdUrl = ($productsXml.MCT.Catalogs.Catalog.FirstChild.Files.File.FilePath | Where-Object { $_ -match ".*http.*$BuildVer.*$Edition.*$IsoArchitecture.*$LanguageCode.esd" } | Select-Object -First 1)
+$esdUrl = ($productsXml.MCT.Catalogs.Catalog.FirstChild.Files.File.FilePath | Where-Object { $_ -match ".*http.*$BuildVer.*$IsoEdition.*$IsoArchitecture.*$LanguageCode.esd" } | Select-Object -First 1)
 Write-Verbose "Found ESD URL: $esdUrl"
 
 Write-Verbose "Downloading ESD file from $esdUrl to $scriptTempDir..."
-$installVer = "windows-$($BuildVer)-$($Edition)-$($IsoArchitecture)-$($LanguageCode)"
 $installEsdFile = "$scriptTempDir\install.esd"
+$bootWimFile = "$scriptTempDir\boot.wim"
 $setupWimFile = "$scriptTempDir\setup.wim"
 $installWimFile = "$scriptTempDir\install.wim"
 if (Test-Path -Path $installEsdFile) {
@@ -150,22 +167,56 @@ if (Test-Path -Path $installEsdFile) {
 # Extract setup.wim
 Write-Verbose "Extracting setup from ESD to WIM format..."
 if (-not (Test-Path -Path $setupWimFile)) {
-    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:1 /DestinationImageFile:$setupWimFile /Compress:max /CheckIntegrity | Out-Null
-    Write-Verbose "Exported setup.wim..."
+    $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installEsdFile | Out-String
+    $setupIndex = ($installWimInfo -split "`n" | ForEach-Object {
+        if ($_ -match "Name\s*:\s*Windows Setup Media") {
+            $previousLine = $previousLine -replace "Index\s*:\s*", ""
+            return $previousLine
+        }
+        $previousLine = $_
+    }) | Select-Object -First 1
+
+    $setupIndex = [int32]$setupIndex
+
+    Write-Verbose "Found setup.wim in index: $setupIndex. Exporting the image to WIM format..."
+    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$setupWimFile /Compress:max /CheckIntegrity | Out-Null
 } 
+
+# Extract boot.wim
+Write-Verbose "Extracting boot from ESD to WIM format..."
+if (-not (Test-Path -Path $bootWimFile)) {
+    $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installEsdFile | Out-String
+    $bootIndex = ($installWimInfo -split "`n" | ForEach-Object {
+        if ($_ -match "Name\s*:\s*Microsoft Windows Setup (.*$Architecture)") {
+            $previousLine = $previousLine -replace "Index\s*:\s*", ""
+            return $previousLine
+        }
+        $previousLine = $_
+    }) | Select-Object -First 1
+
+    $bootIndex = [int32]$bootIndex
+
+    Write-Verbose "Found boot.wim in index: $bootIndex. Exporting the image to WIM format..."
+    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$bootIndex /DestinationImageFile:$bootWimFile /Compress:max /CheckIntegrity | Out-Null
+}
 
 # Extract install.wim
 Write-Verbose "Extracting install from ESD to WIM format..."
 if (-not (Test-Path -Path $installWimFile)) {
-    Dism.exe /Get-WimInfo /WimFile:$installEsdFile
-    $index = Read-Host -Prompt "Please enter Index number of the Windows Edition that you want to export (for example 8)"
-    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$index /DestinationImageFile:$installWimFile /Compress:max /CheckIntegrity | Out-Null
-    
-    $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installWimFile | Out-String
-    $wimEditionName = ($installWimInfo -split "`n" | Where-Object { $_ -match "Name\s*:\s*(.+)" }) -replace "Name\s*:\s*", ""
-    Write-Verbose "Exported install.wim for: $wimEditionName"
-} 
+    $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installEsdFile | Out-String
+    $editionIndex = ($installWimInfo -split "`n" | ForEach-Object {
+        if ($_ -match "Name\s*:\s*Windows.*$Edition") {
+            $previousLine = $previousLine -replace "Index\s*:\s*", ""
+            return $previousLine
+        }
+        $previousLine = $_
+    }) | Select-Object -First 1
 
+    $editionIndex = [int32]$editionIndex
+
+    Write-Verbose "Found install.wim for $Edition in index: $editionIndex. Exporting the image to WIM format..."
+    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$editionIndex /DestinationImageFile:$installWimFile /Compress:max /CheckIntegrity | Out-Null
+} 
 
 # Mount wim file(s)
 Write-Verbose "Mounting setup.wim file..."
@@ -174,28 +225,48 @@ try {
 }
 catch {
     Write-Warning "Mounting setup.wim failed. Please check the file and try again."
-    exit 1
 }
 
 Write-Verbose "Mounting install.wim file..."
-$mountInstallWim = (Read-Host -Prompt "Do you want to mount the install.wim file to inject files/drivers? (Y/N)")
+$mountInstallWim = "N" #(Read-Host -Prompt "Do you want to mount the install.wim file to inject files/drivers? (Y/N)")
 if ($mountInstallWim -eq "Y") {
     try {
         Mount-WindowsImage -ImagePath $installWimFile -Path $installWimTempDir -Index 1 | Out-Null
     }
     catch {
         Write-Warning "Mounting setup.wim failed. Please check the file and try again."
-        exit 1
     }
     Read-Host -Prompt "Please copy the files/drivers to $installWimTempDir\drivers and press Enter to continue"
 }
 
 # Create bootable USB drive
-Write-Verbose "Formatting USB drive $UsbDriveLetter..."
-$UsbDriveId = (Get-Partition -DriveLetter $UsbDriveLetter.TrimEnd(':')).DiskNumber
-Clear-Disk -Number $UsbDriveId -RemoveData -Confirm:$false
-$partition = New-Partition -DiskNumber $UsbDriveId -UseMaximumSize -DriveLetter $UsbDriveLetter.TrimEnd(':')
-$partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel "$($installVer)" -Confirm:$false
+try {
+    Write-Verbose "Formatting USB drive $UsbDriveLetter..."
+    $UsbDriveId = (Get-Partition -DriveLetter $UsbDriveLetter.TrimEnd(':')).DiskNumber
+    Clear-Disk -Number $UsbDriveId -RemoveData -Confirm:$false
+
+    $efipartition = New-Partition -DiskNumber $UsbDriveId -Size 100MB -GptType "{EBD0A0A2-B9E5-4433-87C0-68B6B72699C7}" -AssignDriveLetter #-IsHidden
+    $efipartition | Format-Volume -FileSystem FAT -NewFileSystemLabel "uefi" -Confirm:$false
+    Write-Verbose "EFI partition is $($efipartition.DriveLetter)"
+
+    $partition = New-Partition -DiskNumber $UsbDriveId -UseMaximumSize -AssignDriveLetter
+    $partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel "windowsmedia" -Confirm:$false
+    $UsbDriveLetter = "$($partition.DriveLetter):"
+    Write-Verbose "New Installmedia is $($partition.DriveLetter)"
+}
+catch {
+    Write-Error "Failed to format USB drive $UsbDriveLetter. Please check the drive and try again."
+    exit 1
+}
+
+# Check that the usbdrive was formatted as NTFS
+$usbDriveFileSystem = (Get-Volume -DriveLetter $UsbDriveLetter.TrimEnd(':')).FileSystem
+if ($usbDriveFileSystem -ne "NTFS") {
+    Write-Error "USB drive $UsbDriveLetter is not formatted as NTFS. Please try again"
+    exit 1
+} else {
+    Write-Verbose "USB drive $UsbDriveLetter is corretly formatted as NTFS."
+}
 
 # Adding Windows Setup files
 Write-Verbose "Copying Windows Setup files to USB drive $UsbDriveLetter..."
@@ -211,6 +282,17 @@ if ($mountInstallWim -eq "Y") {
     Write-Verbose "Unmount Install WIM..."
     Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity | Out-Null
 }
+
+Write-Verbose "Copying Windows boot.wim to USB drive $UsbDriveLetter..."
+Copy-Item -Path "$bootWimFile" -Destination "$UsbDriveLetter\sources\boot.wim" -Recurse -Force | Out-Null
+
+Write-Verbose "Copying Windows install.wim to USB drive $UsbDriveLetter..."
+Copy-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Recurse -Force | Out-Null
+
+Write-Verbose "Copying EFI Files to $efipartition.DriveLetter..."
+Copy-Item -Path "$UsbDriveLetter\efi\*" -Destination "$($efipartition.DriveLetter):" -Recurse -Force | Out-Null
+Write-Verbose "Hiding EFI partition $($efipartition.DriveLetter)..."
+Get-Volume -DriveLetter $($efipartition.DriveLetter) | Get-Partition | Remove-PartitionAccessPath -AccessPath "$($efipartition.DriveLetter):\"
 
 # Add bootstick tools
 Write-Verbose "Creating autounattend.xml file..."
@@ -315,7 +397,7 @@ $languageHexMap = @{
     'yo-NG' = '046a'
 }
 $localeId = $languageHexMap["$($LanguageCode)"] + ":0000" + $languageHexMap["$($LanguageCode)"]
-Write-Verbose "Using SetupUILanguage: $LanguageCode, InputLocale: $localeId, SystemLocale: $LanguageCode, UILanguage: $LanguageCode, UserLocale: $LanguageCode, OSImage: $wimEditionName..."
+Write-Verbose "Using SetupUILanguage: $LanguageCode, InputLocale: $localeId, SystemLocale: $LanguageCode, UILanguage: $LanguageCode, UserLocale: $LanguageCode, OSImage: $Edition..."
 $autounattendXml= @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -403,7 +485,7 @@ $autounattendXml= @"
                         <!-- Windows edition -->
                         <MetaData wcm:action="add">
                             <Key>/IMAGE/NAME</Key>
-                            <Value>$wimEditionName</Value>
+                            <Value>Windows 11 $Edition</Value>
                         </MetaData>
                     </InstallFrom>
                     <InstallTo>
