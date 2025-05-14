@@ -1,30 +1,25 @@
-# 🪟 A Windows Media Creation CLI Tool 🪟
+# 🪟 A CLI Media Creation Tool 🪟
 
 This repo contains my solution of a media creation tool to create Windows Installation media using PowerShell.
 
 ## Introduction
 I´ve created this script as I wanted to automate the creation of usb-drives with Windows installation media.
-So I came up with the idea to create a parameter based PowerShell script to ask for the needed details and then fully automated create a usb-drive, containing the Windows installation media. It currently supports the last 4 versions of Windows 10 and 11.
+So I came up with the idea to create a parameter based PowerShell script to ask for the needed details and then fully automated create a usb-drive, containing the Windows installation media. It currently supports the last 4 versions of Windows 11.
 
 ## How to use it?
 
 ```powershell
-.\wmccli.ps1 -Version 11 -Architecture amd64 -Build '11-24H2' -LanguageCode en-us -Edition CLIENTBUSINESS_VOL -UsbDriveLetter "D:" -Verbose
+.\mctcli.ps1 -Architecture amd64 -Build '24H2' -LanguageCode en-us -Edition CLIENTBUSINESS_VOL -UsbDriveLetter "D:" -Verbose
 ```
 
 ## How it works?
-Firstly the script is looking for the windows manifest files for [Windows10](https://go.microsoft.com/fwlink/?LinkId=841361) and [Windows11](https://go.microsoft.com/fwlink/?LinkId=2156292).
+Firstly the script is looking for the windows manifest file for [Windows11](https://go.microsoft.com/fwlink/?LinkId=2156292).
 
 Next is to filter the list, based on the parameters to get the version that you want to download.
 
 Once it figured the right download url from the manifest file it will start downloading the right `esd` file, which will be converted to `.wim` with the edition that you need.
 
 Lastly it is formatting the usb-drive and placing the installation media on it.
-
-## Roadmap
-[] Support to inject oem drivers
-[] Support to inject cab files to the os
-[] Add Troubleshooting tools for Windows Autopilot
 
 ## 🤝 Contributing
 
