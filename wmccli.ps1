@@ -5,17 +5,13 @@
 .DESCRIPTION
     This script downloads the Windows ESD file from Microsoft and creates a bootable USB drive with the selected version of Windows.
 
-.PARAMETER -Version
-    The version of Windows to download. Valid values are 10 or 11.
-    The default is 11.
-
 .PARAMETER -Architecture
     The architecture of Windows to download. Valid values are amd64 or arm64.
     The default is x64.
 
 .PARAMETER -Build
-    The build number of Windows to download. Valid values are 22621, 22631, 22641, 22651, 22661, 22671, 22681, 22691, 22701, 22711, 22721, 22731, 22741, 22751, 22761, 22771, 22781, 22791.
-    The default is the 00000 build.
+    The build number of Windows to download. Valid values are "21H2", "22H2", "23H2", "24H2".
+    The default is the 24H2 build.
 
 .PARAMETER -LanguageCode
     The language code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
@@ -33,8 +29,8 @@
    Enable verbose output.
 
 .EXAMPLE
-    .\wmccli.ps1 -Version 11 -Architecture amd64 -Build '11-24H2' -LanguageCode en-us -Edition CLIENTBUSINESS_VOL -UsbDriveLetter "D:" -Verbose
-    This example downloads the Windows 11 x64 ESD file with build 11-24H2 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable media on the drive E:.
+    .\wmccli.ps1 -Architecture amd64 -Build '24H2' -LanguageCode en-us -Edition CLIENTBUSINESS_VOL -UsbDriveLetter "D:" -Verbose
+    This example downloads the Windows 11 x64 ESD file with build 24H2 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable media on the drive E:.
 
 .OUTPUTS
     ---
@@ -52,14 +48,11 @@
 [CmdletBinding()]
 Param(
     [Parameter(Mandatory = $True)]
-    [ValidateSet("10", "11")]
-    [String]$Version = 11,
-    [Parameter(Mandatory = $True)]
     [ValidateSet("amd64", "arm64")]
     [String]$Architecture = "x64",
     [Parameter(Mandatory = $True)]
-    [ValidateSet("10-21H1", "10-21H2", "10-22H2", "10-23H2", "11-21H2", "11-22H2", "11-23H2", "11-24H2")]
-    [String]$Build = "11-24H2",
+    [ValidateSet("21H2", "22H2", "23H2", "24H2")]
+    [String]$Build = "24H2",
     [Parameter(Mandatory = $True)]
     [ValidateSet("en-us", "de-de")]
     [String]$LanguageCode = "en-us",
@@ -73,7 +66,6 @@ Param(
 #Requires -RunAsAdministrator
 
 Write-Verbose "Parameters"
-Write-Verbose "Version: $Version"
 Write-Verbose "Architecture: $Architecture"
 Write-Verbose "Build: $Build"
 Write-Verbose "LanguageCode: $LanguageCode"
@@ -108,14 +100,10 @@ if (-not (Test-Path -Path $UsbDriveLetter)) {
 }
 
 switch ($Build){
-    "10-21H1" { $BuildVer = "19043" }
-    "10-21H2" { $BuildVer = "19044" }
-    "10-22H2" { $BuildVer = "19045" }
-    "10-23H2" { $BuildVer = "19046" }
-    "11-21H2" { $BuildVer = "22000" }
-    "11-22H2" { $BuildVer = "22621" }
-    "11-23H2" { $BuildVer = "22631" }
-    "11-24H2" { $BuildVer = "26100" }
+    "21H2" { $BuildVer = "22000" }
+    "22H2" { $BuildVer = "22621" }
+    "23H2" { $BuildVer = "22631" }
+    "24H2" { $BuildVer = "26100" }
 }
 Write-Verbose "Build version converted to $BuildVer..."
 
@@ -125,26 +113,17 @@ switch ($Architecture) {
 }
 Write-Verbose "Architecture converted to $IsoArchitecture..."
 
-# Download Manifests
-switch ($Version) {
-    "10" 
-    { 
-        $Url = "https://go.microsoft.com/fwlink/?LinkId=841361" 
-    }
-    "11" 
-    { 
-        $Url = "https://go.microsoft.com/fwlink/?LinkId=2156292" 
-    }
-}
-Write-Verbose "Downloading $($Version) from $($Url) to $scriptTempDir..."
-Invoke-WebRequest -Uri $Url -OutFile "$scriptTempDir\$($Version).cab" -Verbose:$Verbose
-Write-Verbose "Extracting $($Version) to $scriptTempDir\$($Version)_products.xml..."
-Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\$($Version).cab $scriptTempDir\$($Version)_products.xml" -Wait | Out-Null
-Write-Verbose "Removing temporary file $scriptTempDir\$($Version).cab..."
-Remove-Item -Path "$scriptTempDir\$($Version).cab" -Force | Out-Null
+# Download Manifest
+$Url = "https://go.microsoft.com/fwlink/?LinkId=2156292" 
+Write-Verbose "Downloading Manifest from $($Url) to $scriptTempDir..."
+Invoke-WebRequest -Uri $Url -OutFile "$scriptTempDir\manifest.cab" -Verbose:$Verbose
+Write-Verbose "Extracting Manifest to $scriptTempDir\manifest_products.xml..."
+Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\manifest.cab $scriptTempDir\manifest_products.xml" -Wait | Out-Null
+Write-Verbose "Removing temporary file $scriptTempDir\manifest.cab..."
+Remove-Item -Path "$scriptTempDir\manifest.cab" -Force | Out-Null
 
 # Construct URL and Download ESD file
-$productsFile = "$scriptTempDir\$($Version)_products.xml"
+$productsFile = "$scriptTempDir\manifest_products.xml"
 [xml]$productsXml = Get-Content -Path $productsFile
 Write-Verbose "Parsing XML file $productsFile..."
 
@@ -152,7 +131,7 @@ $esdUrl = ($productsXml.MCT.Catalogs.Catalog.FirstChild.Files.File.FilePath | Wh
 Write-Verbose "Found ESD URL: $esdUrl"
 
 Write-Verbose "Downloading ESD file from $esdUrl to $scriptTempDir..."
-$installVer = "win$($Version)-$($BuildVer)-$($Edition)-$($IsoArchitecture)-$($LanguageCode)"
+$installVer = "windows-$($BuildVer)-$($Edition)-$($IsoArchitecture)-$($LanguageCode)"
 $installEsdFile = "$scriptTempDir\install.esd"
 $setupWimFile = "$scriptTempDir\setup.wim"
 $installWimFile = "$scriptTempDir\install.wim"
