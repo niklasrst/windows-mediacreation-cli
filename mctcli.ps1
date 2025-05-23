@@ -17,6 +17,10 @@
     The language code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
     The default is en-us.
 
+.PARAMETER -RegionCode
+    The regional code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
+    The default is en-us and will be matched to LanuageCode. if not set.
+
 .PARAMETER -Edition
         The edition of Windows to download. Valid values are "Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N"
         The default is Pro.
@@ -54,8 +58,9 @@ Param(
     [ValidateSet("21H2", "22H2", "23H2", "24H2")]
     [String]$Build = "24H2",
     [Parameter(Mandatory = $True)]
-    [ValidateSet("en-us", "de-de")]
     [String]$LanguageCode = "en-us",
+    [Parameter(Mandatory = $False)]
+    [String]$RegionCode = "en-us",
     [Parameter(Mandatory = $True)]
     [ValidateSet("Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N")]
     [String]$Edition = "Pro",
@@ -146,6 +151,11 @@ switch ($Architecture) {
     "arm64" { $IsoArchitecture = "A64" }
 }
 Write-Verbose "Architecture converted to $IsoArchitecture..."
+
+if ($null -eq $RegionCode) {
+    $RegionCode = $LanguageCode
+}
+Write-Verbose "Region code set to $RegionCode..."
 
 # Download Manifest
 $Url = "https://go.microsoft.com/fwlink/?LinkId=2156292" 
@@ -491,7 +501,7 @@ $languageHexMap = @{
     'wo-SN' = '0488'
     'yo-NG' = '046a'
 }
-$localeId = $languageHexMap["$($LanguageCode)"] + ":0000" + $languageHexMap["$($LanguageCode)"]
+$localeId = $languageHexMap["$($RegionCode)"] + ":0000" + $languageHexMap["$($RegionCode)"]
 Write-Verbose "Using SetupUILanguage: $LanguageCode, InputLocale: $localeId, SystemLocale: $LanguageCode, UILanguage: $LanguageCode, UserLocale: $LanguageCode, OSImage: $Edition..."
 $autounattendXml= @"
 <?xml version="1.0" encoding="utf-8"?>
