@@ -18,8 +18,8 @@
     The default is en-us.
 
 .PARAMETER -Edition
-        The edition of Windows to download. Valid values are CLIENTCONSUMER_RET or CLIENTBUSINESS_VOL.
-        The default is CLIENTBUSINESS_VOL.
+        The edition of Windows to download. Valid values are "Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N"
+        The default is Pro.
 
 .PARAMETER -UsbDriveLetter
     The drive letter of the USB drive to create the bootable media.
@@ -29,7 +29,7 @@
    Enable verbose output.
 
 .EXAMPLE
-    .\mctcli.ps1 -Architecture amd64 -Build '24H2' -LanguageCode en-us -Edition CLIENTBUSINESS_VOL -UsbDriveLetter "D:" -Verbose
+    .\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode de-de -Edition Pro -UsbDriveLetter "E:" -Verbose
     This example downloads the Windows 11 x64 ESD file with build 24H2 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable media on the drive D:.
 
 .OUTPUTS
@@ -64,6 +64,22 @@ Param(
 )
 
 #Requires -RunAsAdministrator
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    Write-Error "This script requires PowerShell 7 or higher. Please upgrade your PowerShell version."
+    exit 1
+}
+if ((Test-NetConnection -ComputerName "www.microsoft.com" -Port 80).TcpTestSucceeded -ne $true) {
+    Write-Error "Could not connect to Microsoft which is needed for the installation media. Please ensure connectivity to Microsoft.com and try again."
+    exit 1
+}
+if ((Test-NetConnection -ComputerName "www.github.com" -Port 80).TcpTestSucceeded -ne $true) {
+    Write-Error "Could not connect to Github which is needed for the UEFI drivers. Please ensure connectivity to Github.com and try again."
+    exit 1
+}
+if ([int]((Get-PSDrive -PSProvider 'FileSystem' | Where-Object { $_.Root -eq "$($env:SystemDrive)\" }).Free / 1GB) -lt 10) {
+    Write-Error "No enough disk space. Please ensure that at least 10GB of disk space are available and try again."
+    exit 1
+}
 
 Write-Verbose "Parameters"
 Write-Verbose "Architecture: $Architecture"
@@ -78,6 +94,7 @@ Write-Verbose "Starting Windows Media Creation CLI"
 # Variables
 $IsoArchitecture = $null
 $IsoEdition = $null
+$BootloaderManufacturer = "Rufus"
 $scriptTempDir = "$env:temp\mctcli"
 $setupWimTempDir = "$env:temp\mctcli\setupwim"
 $bootWimTempDir = "$env:temp\mctcli\bootwim"
@@ -139,7 +156,7 @@ Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $sc
 Write-Verbose "Removing temporary file $scriptTempDir\manifest.cab..."
 Remove-Item -Path "$scriptTempDir\manifest.cab" -Force | Out-Null
 
-# Construct URL and Download ESD file
+# Build Download-URL for ESD file
 $productsFile = "$scriptTempDir\manifest_products.xml"
 [xml]$productsXml = Get-Content -Path $productsFile
 Write-Verbose "Parsing XML file $productsFile..."
@@ -147,8 +164,8 @@ Write-Verbose "Parsing XML file $productsFile..."
 $esdUrl = ($productsXml.MCT.Catalogs.Catalog.FirstChild.Files.File.FilePath | Where-Object { $_ -match ".*http.*$BuildVer.*$IsoEdition.*$IsoArchitecture.*$LanguageCode.esd" } | Select-Object -First 1)
 Write-Verbose "Found ESD URL: $esdUrl"
 
-Write-Verbose "Downloading ESD file from $esdUrl to $scriptTempDir..."
-$installEsdFile = "$scriptTempDir\install.esd"
+$esdVersion = ($Edition + "-" + $LanguageCode + "-" + $Build + "-" + $Architecture).Replace(" ","")
+$installEsdFile = "$scriptTempDir\$($esdVersion).esd"
 $bootWimFile = "$scriptTempDir\boot.wim"
 $setupWimFile = "$scriptTempDir\setup.wim"
 $installWimFile = "$scriptTempDir\install.wim"
@@ -156,6 +173,7 @@ if (Test-Path -Path $installEsdFile) {
     Write-Verbose "ESD file already exists. Skipping download..."
 } else {
     try {
+        Write-Verbose "Downloading ESD file from $esdUrl to $scriptTempDir..."
         Invoke-WebRequest -Uri $esdUrl -OutFile $installEsdFile
     }
     catch {
@@ -182,12 +200,52 @@ if (-not (Test-Path -Path $setupWimFile)) {
     Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$setupWimFile /Compress:max /CheckIntegrity | Out-Null
 } 
 
+<##########
+########## TEST
+##########
+
+$windowsSetupMedia = "$env:temp\mctcli\windowsSetupMedia"
+$windowsSetupMediaWim = "$env:temp\mctcli\windowsSetupMedia.wim"
+New-Item -Path $windowsSetupMedia -ItemType Directory -Force
+$setupIndex = 1
+Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$windowsSetupMediaWim /Compress:max /CheckIntegrity
+Mount-WindowsImage -ImagePath $windowsSetupMediaWim -Path $windowsSetupMedia -Index 1
+#Dismount-WindowsImage -Path $windowsSetupMedia -Discard
+
+$MSWindowsPE = "$env:temp\mctcli\MSWindowsPE"
+$MSWindowsPEWim = "$env:temp\mctcli\MSWindowsPE.wim" #boot.wim
+New-Item -Path $MSWindowsPE -ItemType Directory -Force
+$setupIndex = 2
+Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$MSWindowsPEWim /Compress:max /CheckIntegrity
+Mount-WindowsImage -ImagePath $MSWindowsPEWim -Path $MSWindowsPE -Index 1
+#Dismount-WindowsImage -Path $MSWindowsPE -Discard
+
+$MSWindowsSetupamd64 = "$env:temp\mctcli\MSWindowsSetupamd64"
+$MSWindowsSetupamd64Wim = "$env:temp\mctcli\MSWindowsSetupamd64.wim"
+New-Item -Path $MSWindowsSetupamd64 -ItemType Directory -Force
+$setupIndex = 3
+Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$MSWindowsSetupamd64Wim /Compress:max /CheckIntegrity
+Mount-WindowsImage -ImagePath $MSWindowsSetupamd64Wim -Path $MSWindowsSetupamd64 -Index 1
+#Dismount-WindowsImage -Path $MSWindowsSetupamd64 -Discard
+
+$install = "$env:temp\mctcli\install"
+$installWim = "$env:temp\mctcli\install.wim"
+New-Item -Path $installWim -ItemType Directory -Force
+$setupIndex = 8
+Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$installWim /Compress:max /CheckIntegrity
+Mount-WindowsImage -ImagePath $installWim -Path $install -Index 1
+#Dismount-WindowsImage -Path $install -Discard
+
+##########
+##########
+##########>
+
 # Extract boot.wim
 Write-Verbose "Extracting boot from ESD to WIM format..."
 if (-not (Test-Path -Path $bootWimFile)) {
     $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installEsdFile | Out-String
     $bootIndex = ($installWimInfo -split "`n" | ForEach-Object {
-        if ($_ -match "Name\s*:\s*Microsoft Windows Setup (.*$Architecture)") {
+        if ($_ -match "Name\s*:\s*Microsoft Windows PE (.*$Architecture)") {
             $previousLine = $previousLine -replace "Index\s*:\s*", ""
             return $previousLine
         }
@@ -243,16 +301,29 @@ if ($mountInstallWim -eq "Y") {
 try {
     Write-Verbose "Formatting USB drive $UsbDriveLetter..."
     $UsbDriveId = (Get-Partition -DriveLetter $UsbDriveLetter.TrimEnd(':')).DiskNumber
-    Clear-Disk -Number $UsbDriveId -RemoveData -Confirm:$false
+    $diskpartClear = @"
+    select disk $UsbDriveId
+    clean
+    exit
+"@ | diskpart.exe
 
-    $efipartition = New-Partition -DiskNumber $UsbDriveId -Size 100MB -GptType "{EBD0A0A2-B9E5-4433-87C0-68B6B72699C7}" -AssignDriveLetter #-IsHidden
-    $efipartition | Format-Volume -FileSystem FAT -NewFileSystemLabel "uefi" -Confirm:$false
-    Write-Verbose "EFI partition is $($efipartition.DriveLetter)"
+    <##$efipartition = New-Partition -DiskNumber $UsbDriveId -Size 100MB -GptType "{EBD0A0A2-B9E5-4433-87C0-68B6B72699C7}" -AssignDriveLetter
+    #$efipartition | Format-Volume -FileSystem FAT32 -NewFileSystemLabel "uefi" -Confirm:$false -Force
+    #Write-Verbose "EFI partition is $($efipartition.DriveLetter)"
 
     $partition = New-Partition -DiskNumber $UsbDriveId -UseMaximumSize -AssignDriveLetter
     $partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel "windowsmedia" -Confirm:$false
+    
     $UsbDriveLetter = "$($partition.DriveLetter):"
-    Write-Verbose "New Installmedia is $($partition.DriveLetter)"
+    Write-Verbose "New Installmedia is $($partition.DriveLetter)"#>
+
+    $efiPartition = New-Partition -DiskNumber $UsbDriveId -Size 1024MB -AssignDriveLetter
+    $efiPartitionDriveLetter = "$($efiPartition.DriveLetter):"
+    Format-Volume -Partition $efiPartition -FileSystem FAT32 -NewFileSystemLabel "boot" -Confirm:$false
+    $dataPartition = New-Partition -DiskNumber $UsbDriveId -UseMaximumSize -AssignDriveLetter
+    $UsbDriveLetter = "$($dataPartition.DriveLetter):"
+    Format-Volume -Partition $dataPartition -FileSystem NTFS -NewFileSystemLabel "windowsmedia" -Confirm:$false
+
 }
 catch {
     Write-Error "Failed to format USB drive $UsbDriveLetter. Please check the drive and try again."
@@ -261,8 +332,8 @@ catch {
 
 # Check that the usbdrive was formatted as NTFS
 $usbDriveFileSystem = (Get-Volume -DriveLetter $UsbDriveLetter.TrimEnd(':')).FileSystem
-if ($usbDriveFileSystem -ne "NTFS") {
-    Write-Error "USB drive $UsbDriveLetter is not formatted as NTFS. Please try again"
+if (($usbDriveFileSystem -ne "NTFS") -and ((Get-Disk -Number $UsbDriveId).PartitionStyle) -ne "MBR") {
+    Write-Error "USB drive $UsbDriveLetter is not formatted as NTFS in MBR. Please try again"
     exit 1
 } else {
     Write-Verbose "USB drive $UsbDriveLetter is corretly formatted as NTFS."
@@ -271,6 +342,7 @@ if ($usbDriveFileSystem -ne "NTFS") {
 # Adding Windows Setup files
 Write-Verbose "Copying Windows Setup files to USB drive $UsbDriveLetter..."
 Copy-Item -Path "$setupWimTempDir\*" -Destination "$UsbDriveLetter" -Recurse -Force | Out-Null
+Move-Item -Path "$UsbDriveLetter\sources\_manifest" -Destination "$UsbDriveLetter\" -Force | Out-Null
 
 Write-Verbose "Adding driver directory..."
 New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
@@ -290,9 +362,32 @@ Write-Verbose "Copying Windows install.wim to USB drive $UsbDriveLetter..."
 Copy-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Recurse -Force | Out-Null
 
 Write-Verbose "Copying EFI Files to $efipartition.DriveLetter..."
-Copy-Item -Path "$UsbDriveLetter\efi\*" -Destination "$($efipartition.DriveLetter):" -Recurse -Force | Out-Null
-Write-Verbose "Hiding EFI partition $($efipartition.DriveLetter)..."
-Get-Volume -DriveLetter $($efipartition.DriveLetter) | Get-Partition | Remove-PartitionAccessPath -AccessPath "$($efipartition.DriveLetter):\"
+Copy-Item "$UsbDriveLetter\boot" "$efiPartitionDriveLetter\" -Recurse
+#Copy-Item "$UsbDriveLetter\efi" "$efiPartitionDriveLetter\" -Recurse
+New-Item -Path "$efiPartitionDriveLetter" -Name "efi" -ItemType Directory -Force | Out-Null
+New-Item -Path "$efiPartitionDriveLetter\efi" -Name "Boot" -ItemType Directory -Force | Out-Null
+New-Item -Path "$efiPartitionDriveLetter\efi" -Name "$BootloaderManufacturer" -ItemType Directory -Force | Out-Null
+#https://github.com/pbatard/uefi-ntfs/releases/tag/v2.5
+Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootaa64.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootaa64.efi"
+Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootarm.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootarm.efi"
+Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootia32.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootia32.efi"
+Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootx64.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootx64.efi"
+#https://github.com/pbatard/ntfs-3g/releases
+Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_aa64.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_aa64.efi"
+Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_arm.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_arm.efi"
+Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_ia32.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_ia32.efi"
+Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_x64.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_x64.efi"
+#Copy-Item "$UsbDriveLetter\bootmgr*" "$efiPartitionDriveLetter\" -Recurse -ErrorAction SilentlyContinue
+#Copy-Item "$UsbDriveLetter\setup.exe" "$efiPartitionDriveLetter\" -Recurse
+#Copy-Item "$UsbDriveLetter\sources\boot.wim" "$efiPartitionDriveLetter\sources\boot.wim" -Force -Recurse
+#Copy-Item -Path "$UsbDriveLetter\efi\*" -Destination "$($efipartition.DriveLetter):" -Recurse -Force | Out-Null
+#Copy-Item -Path "$UsbDriveLetter\bootmgr" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
+#Copy-Item -Path "$UsbDriveLetter\bootmgr.efi" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
+#Write-Verbose "Hiding EFI partition $($efipartition.DriveLetter)..."
+#Get-Volume -DriveLetter $($efipartition.DriveLetter) | Get-Partition | Remove-PartitionAccessPath -AccessPath "$($efipartition.DriveLetter):\"
+
+#Write-Verbose "Copying Windows boot files to $efiPartitionDriveLetter..."
+#Start-Process "bcdboot" -ArgumentList "`"$($installDrive)\Windows`" /s `"$($efiPartitionDriveLetter)`" /f ALL" -Wait
 
 # Add bootstick tools
 Write-Verbose "Creating autounattend.xml file..."
