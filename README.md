@@ -9,7 +9,7 @@ So I came up with the idea to create a parameter based PowerShell script to ask 
 ## How to use it?
 
 ```powershell
-.\mctcli.ps1 -Architecture amd64 -Build '24H2' -LanguageCode en-us -Edition CLIENTBUSINESS_VOL -UsbDriveLetter "D:" -Verbose
+.\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode de-de --RegionCode de-de -Edition Pro -UsbDriveLetter "E:" -Verbose
 ```
 
 ## How it works?
@@ -20,6 +20,7 @@ Next is to filter the list, based on the parameters to get the version that you 
 Once it figured the right download url from the manifest file it will start downloading the right `esd` file, which will be converted to `.wim` with the edition that you need.
 
 Lastly it is formatting the usb-drive and placing the installation media on it.
+I wanted to use `NTFS` as the filesystem hosting the install files as it enables larger `.wim` files and/or driverpacks. So I used the [Rufus Bootloader](https://github.com/pbatard/uefi-ntfs) which will added to a smaller `FAT32` partition on the usb-drive which will initiate the bootsequence and loads the install files from the `NTFS` partition, which both will be created from my script.
 
 ## 🤝 Contributing
 
