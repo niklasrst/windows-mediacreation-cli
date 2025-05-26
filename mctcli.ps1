@@ -60,7 +60,7 @@ Param(
     [Parameter(Mandatory = $True)]
     [String]$LanguageCode = "en-us",
     [Parameter(Mandatory = $False)]
-    [String]$RegionCode = "en-us",
+    [String]$RegionCode,
     [Parameter(Mandatory = $True)]
     [ValidateSet("Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N")]
     [String]$Edition = "Pro",
@@ -90,6 +90,7 @@ Write-Verbose "Parameters"
 Write-Verbose "Architecture: $Architecture"
 Write-Verbose "Build: $Build"
 Write-Verbose "LanguageCode: $LanguageCode"
+Write-Verbose "RegionCode: $RegionCode"
 Write-Verbose "Edition: $Edition"
 Write-Verbose "UsbDriveLetter: $UsbDriveLetter"
 Write-Verbose "Working Directory: $env:temp\mctcli"
@@ -152,10 +153,10 @@ switch ($Architecture) {
 }
 Write-Verbose "Architecture converted to $IsoArchitecture..."
 
-if ($null -eq $RegionCode) {
+if (-not $RegionCode -or [string]::IsNullOrWhiteSpace($RegionCode)) {
     $RegionCode = $LanguageCode
+    Write-Verbose "RegionCode not specified. Defaulting RegionCode to LanguageCode: $RegionCode ..."
 }
-Write-Verbose "Region code set to $RegionCode..."
 
 # Download Manifest
 $Url = "https://go.microsoft.com/fwlink/?LinkId=2156292" 
@@ -209,46 +210,6 @@ if (-not (Test-Path -Path $setupWimFile)) {
     Write-Verbose "Found setup.wim in index: $setupIndex. Exporting the image to WIM format..."
     Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$setupWimFile /Compress:max /CheckIntegrity | Out-Null
 } 
-
-<##########
-########## TEST
-##########
-
-$windowsSetupMedia = "$env:temp\mctcli\windowsSetupMedia"
-$windowsSetupMediaWim = "$env:temp\mctcli\windowsSetupMedia.wim"
-New-Item -Path $windowsSetupMedia -ItemType Directory -Force
-$setupIndex = 1
-Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$windowsSetupMediaWim /Compress:max /CheckIntegrity
-Mount-WindowsImage -ImagePath $windowsSetupMediaWim -Path $windowsSetupMedia -Index 1
-#Dismount-WindowsImage -Path $windowsSetupMedia -Discard
-
-$MSWindowsPE = "$env:temp\mctcli\MSWindowsPE"
-$MSWindowsPEWim = "$env:temp\mctcli\MSWindowsPE.wim" #boot.wim
-New-Item -Path $MSWindowsPE -ItemType Directory -Force
-$setupIndex = 2
-Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$MSWindowsPEWim /Compress:max /CheckIntegrity
-Mount-WindowsImage -ImagePath $MSWindowsPEWim -Path $MSWindowsPE -Index 1
-#Dismount-WindowsImage -Path $MSWindowsPE -Discard
-
-$MSWindowsSetupamd64 = "$env:temp\mctcli\MSWindowsSetupamd64"
-$MSWindowsSetupamd64Wim = "$env:temp\mctcli\MSWindowsSetupamd64.wim"
-New-Item -Path $MSWindowsSetupamd64 -ItemType Directory -Force
-$setupIndex = 3
-Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$MSWindowsSetupamd64Wim /Compress:max /CheckIntegrity
-Mount-WindowsImage -ImagePath $MSWindowsSetupamd64Wim -Path $MSWindowsSetupamd64 -Index 1
-#Dismount-WindowsImage -Path $MSWindowsSetupamd64 -Discard
-
-$install = "$env:temp\mctcli\install"
-$installWim = "$env:temp\mctcli\install.wim"
-New-Item -Path $installWim -ItemType Directory -Force
-$setupIndex = 8
-Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$installWim /Compress:max /CheckIntegrity
-Mount-WindowsImage -ImagePath $installWim -Path $install -Index 1
-#Dismount-WindowsImage -Path $install -Discard
-
-##########
-##########
-##########>
 
 # Extract boot.wim
 Write-Verbose "Extracting boot from ESD to WIM format..."
@@ -393,11 +354,9 @@ Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7
 #Copy-Item -Path "$UsbDriveLetter\efi\*" -Destination "$($efipartition.DriveLetter):" -Recurse -Force | Out-Null
 #Copy-Item -Path "$UsbDriveLetter\bootmgr" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
 #Copy-Item -Path "$UsbDriveLetter\bootmgr.efi" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
+
 #Write-Verbose "Hiding EFI partition $($efipartition.DriveLetter)..."
 #Get-Volume -DriveLetter $($efipartition.DriveLetter) | Get-Partition | Remove-PartitionAccessPath -AccessPath "$($efipartition.DriveLetter):\"
-
-#Write-Verbose "Copying Windows boot files to $efiPartitionDriveLetter..."
-#Start-Process "bcdboot" -ArgumentList "`"$($installDrive)\Windows`" /s `"$($efiPartitionDriveLetter)`" /f ALL" -Wait
 
 # Add bootstick tools
 Write-Verbose "Creating autounattend.xml file..."
