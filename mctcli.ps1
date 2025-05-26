@@ -255,7 +255,7 @@ Write-Verbose "Extracting boot from ESD to WIM format..."
 if (-not (Test-Path -Path $bootWimFile)) {
     $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installEsdFile | Out-String
     $bootIndex = ($installWimInfo -split "`n" | ForEach-Object {
-        if ($_ -match "Name\s*:\s*Microsoft Windows PE (.*$Architecture)") {
+        if ($_ -match "Name\s*:\s*Microsoft Windows Setup (.*$Architecture)") {
             $previousLine = $previousLine -replace "Index\s*:\s*", ""
             return $previousLine
         }
@@ -514,10 +514,10 @@ $autounattendXml= @"
                 <UILanguage>$LanguageCode</UILanguage>
             </SetupUILanguage>
             <InputLocale>$localeId</InputLocale>
-            <SystemLocale>$LanguageCode</SystemLocale>
-            <UILanguage>$LanguageCode</UILanguage>
-            <UILanguageFallback>$LanguageCode</UILanguageFallback>
-            <UserLocale>$LanguageCode</UserLocale>
+            <SystemLocale>$RegionCode</SystemLocale>
+            <UILanguage>$RegionCode</UILanguage>
+            <UILanguageFallback>$RegionCode</UILanguageFallback>
+            <UserLocale>$RegionCode</UserLocale>
         </component>
         <component name="Microsoft-Windows-Setup" processorArchitecture="$Architecture" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
             xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
