@@ -9,10 +9,14 @@ So I came up with the idea to create a parameter based PowerShell script to ask 
 ## How to use it?
 
 ```powershell
-.\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode de-de --RegionCode de-de -Edition Pro -UsbDriveLetter "E:" -Verbose
+.\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "en-us" -RegionCode "de-de" -Edition Pro -UsbDriveLetter "D:" -Verbose
 ```
 
 ## How it works?
+
+<span style="color:cornflowerblue;font-weight:bold">🛈  HINT</span><br/>
+    I will update this part to tell you very granulary how the script works and what id does ;)
+
 Firstly the script is looking for the windows manifest file for [Windows11](https://go.microsoft.com/fwlink/?LinkId=2156292).
 
 Next is to filter the list, based on the parameters to get the version that you want to download.
