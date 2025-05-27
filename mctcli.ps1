@@ -65,7 +65,12 @@ Param(
     [ValidateSet("Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N")]
     [String]$Edition = "Pro",
     [Parameter(Mandatory = $True)]
-    [String]$UsbDriveLetter = "D:"
+    [String]$UsbDriveLetter = "D:",
+    [Parameter(Mandatory = $False)]
+    [ValidateSet("Dell", "Lenovo", "HP")]
+    [String]$DriverManufacturer,
+    [Parameter(Mandatory = $False)]
+    [String]$DriverModel
 )
 
 #Requires -RunAsAdministrator
@@ -93,6 +98,8 @@ Write-Verbose "LanguageCode: $LanguageCode"
 Write-Verbose "RegionCode: $RegionCode"
 Write-Verbose "Edition: $Edition"
 Write-Verbose "UsbDriveLetter: $UsbDriveLetter"
+Write-Verbose "DriverManufacturer: $DriverManufacturer"
+Write-Verbose "DriverModel: $DriverModel"
 Write-Verbose "Working Directory: $env:temp\mctcli"
 Write-Verbose "------------------------------------------------------"
 Write-Verbose "Starting Windows Media Creation CLI"
@@ -306,7 +313,29 @@ Copy-Item -Path "$setupWimTempDir\*" -Destination "$UsbDriveLetter" -Recurse -Fo
 Move-Item -Path "$UsbDriveLetter\sources\_manifest" -Destination "$UsbDriveLetter\" -Force | Out-Null
 
 Write-Verbose "Adding driver directory..."
-New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
+New-Item -Path "$UsbDriveLetter" -Name "$UsbDriveLetter" -ItemType Directory -Force | Out-Null
+
+switch ($DriverManufacturer) {
+    "Dell" 
+    {
+        Write-Verbose "Searching Dell drivers for $DriverModel ..."
+        Invoke-WebRequest -Uri "https://downloads.dell.com/catalog/driverpackcatalog.cab" -OutFile "$scriptTempDir\delldrivercatalog.cab" -Verbose:$Verbose
+        Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\delldrivercatalog.cab $scriptTempDir\delldrivercatalog.xml" -Wait | Out-Null
+        Remove-Item -Path "$scriptTempDir\delldrivercatalog.cab" -Force | Out-Null
+    }
+    "Lenovo" 
+    {
+        Write-Verbose "Searching Lenovo drivers for $DriverModel ..."
+        Invoke-WebRequest -Uri "https://download.lenovo.com/cdrt/td/catalogv2.xml" -OutFile "$scriptTempDir\lenovodrivercatalog.xml" -Verbose:$Verbose
+    }
+    "HP" 
+    {
+        Write-Verbose "Searching HP drivers for $DriverModel ..."
+        Invoke-WebRequest -Uri "https://hpia.hpcloud.hp.com/downloads/driverpackcatalog/HPClientDriverPackCatalog.cab" -OutFile "$scriptTempDir\hpdrivercatalog.cab" -Verbose:$Verbose
+        Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\hpdrivercatalog.cab $scriptTempDir\hpdrivercatalog.xml" -Wait | Out-Null
+        Remove-Item -Path "$scriptTempDir\hpdrivercatalog.cab" -Force | Out-Null
+    }
+}
 
 Write-Verbose "Unmount Setup WIM..."
 Dismount-WindowsImage -Path $setupWimTempDir -Discard | Out-Null
@@ -346,6 +375,11 @@ Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7
 #Copy-Item -Path "$UsbDriveLetter\bootmgr.efi" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
 
 # Add bootstick tools
+Write-Verbose "Cloning Troubleshooting tools..."
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/andrew-s-taylor/WindowsAutopilotInfo/refs/heads/main/Community%20Version/Get-AutopilotDiagnosticsCommunity.ps1" -OutFile "$UsbDriveLetter\Get-AutopilotDiagnosticsCommunity.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/andrew-s-taylor/WindowsAutopilotInfo/refs/heads/main/Community%20Version/get-windowsautopilotinfocommunity.ps1" -OutFile "$UsbDriveLetter\Get-WindowsAutopilotInfoCommunity.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/refs/heads/main/Get-IntuneManagementExtensionDiagnostics.ps1" -OutFile "$UsbDriveLetter\Get-IntuneManagementExtensionDiagnostics.ps1"
+
 Write-Verbose "Creating autounattend.xml file..."
 $languageHexMap = @{
     'en-US' = '0409'
@@ -582,5 +616,8 @@ Remove-Item -Path $productsFile -Force | Out-Null
 Remove-Item -Path $installWimTempDir -Recurse -Force | Out-Null
 Remove-Item -Path $bootWimTempDir -Recurse -Force | Out-Null
 Remove-Item -Path $setupWimTempDir -Recurse -Force | Out-Null
+Remove-Item -Path $scriptTempDir\hpdrivercatalog.xml -Force | Out-Null
+Remove-Item -Path $scriptTempDir\lenovodrivercatalog.xml -Force | Out-Null
+Remove-Item -Path $scriptTempDir\delldrivercatalog.xml -Force | Out-Null
 
 Write-Host "Finished Windows Media Creation CLI" -ForegroundColor Green
