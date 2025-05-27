@@ -29,6 +29,14 @@
     The drive letter of the USB drive to create the bootable media.
     For example "E:".
 
+.PARAMETER -DriverManufacturer
+    The manufacturer of the drivers to download. Valid values are "Dell", "Lenovo", "HP".
+    The default is not set.
+
+.PARAMETER -DriverModel
+    The model of the drivers to download. This is optional and will be used to filter the drivers from the manufacturer.
+    For example "XPS 13" for Dell or "ThinkPad X1 Carbon" for Lenovo.
+
 .PARAMETER -Verbose
    Enable verbose output.
 
@@ -168,7 +176,7 @@ if (-not $RegionCode -or [string]::IsNullOrWhiteSpace($RegionCode)) {
 # Download Manifest
 $Url = "https://go.microsoft.com/fwlink/?LinkId=2156292" 
 Write-Verbose "Downloading Manifest from $($Url) to $scriptTempDir..."
-Invoke-WebRequest -Uri $Url -OutFile "$scriptTempDir\manifest.cab" -Verbose:$Verbose
+Invoke-WebRequest -Uri $Url -OutFile "$scriptTempDir\manifest.cab"
 Write-Verbose "Extracting Manifest to $scriptTempDir\manifest_products.xml..."
 Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\manifest.cab $scriptTempDir\manifest_products.xml" -Wait | Out-Null
 Write-Verbose "Removing temporary file $scriptTempDir\manifest.cab..."
@@ -319,19 +327,19 @@ switch ($DriverManufacturer) {
     "Dell" 
     {
         Write-Verbose "Searching Dell drivers for $DriverModel ..."
-        Invoke-WebRequest -Uri "https://downloads.dell.com/catalog/driverpackcatalog.cab" -OutFile "$scriptTempDir\delldrivercatalog.cab" -Verbose:$Verbose
+        Invoke-WebRequest -Uri "https://downloads.dell.com/catalog/driverpackcatalog.cab" -OutFile "$scriptTempDir\delldrivercatalog.cab"
         Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\delldrivercatalog.cab $scriptTempDir\delldrivercatalog.xml" -Wait | Out-Null
         Remove-Item -Path "$scriptTempDir\delldrivercatalog.cab" -Force | Out-Null
     }
     "Lenovo" 
     {
         Write-Verbose "Searching Lenovo drivers for $DriverModel ..."
-        Invoke-WebRequest -Uri "https://download.lenovo.com/cdrt/td/catalogv2.xml" -OutFile "$scriptTempDir\lenovodrivercatalog.xml" -Verbose:$Verbose
+        Invoke-WebRequest -Uri "https://download.lenovo.com/cdrt/td/catalogv2.xml" -OutFile "$scriptTempDir\lenovodrivercatalog.xml"
     }
     "HP" 
     {
         Write-Verbose "Searching HP drivers for $DriverModel ..."
-        Invoke-WebRequest -Uri "https://hpia.hpcloud.hp.com/downloads/driverpackcatalog/HPClientDriverPackCatalog.cab" -OutFile "$scriptTempDir\hpdrivercatalog.cab" -Verbose:$Verbose
+        Invoke-WebRequest -Uri "https://hpia.hpcloud.hp.com/downloads/driverpackcatalog/HPClientDriverPackCatalog.cab" -OutFile "$scriptTempDir\hpdrivercatalog.cab"
         Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\hpdrivercatalog.cab $scriptTempDir\hpdrivercatalog.xml" -Wait | Out-Null
         Remove-Item -Path "$scriptTempDir\hpdrivercatalog.cab" -Force | Out-Null
     }
@@ -616,8 +624,14 @@ Remove-Item -Path $productsFile -Force | Out-Null
 Remove-Item -Path $installWimTempDir -Recurse -Force | Out-Null
 Remove-Item -Path $bootWimTempDir -Recurse -Force | Out-Null
 Remove-Item -Path $setupWimTempDir -Recurse -Force | Out-Null
-Remove-Item -Path $scriptTempDir\hpdrivercatalog.xml -Force | Out-Null
-Remove-Item -Path $scriptTempDir\lenovodrivercatalog.xml -Force | Out-Null
-Remove-Item -Path $scriptTempDir\delldrivercatalog.xml -Force | Out-Null
+if (Test-Path -Path "$scriptTempDir\hpdrivercatalog.xml") {
+    Remove-Item -Path "$scriptTempDir\hpdrivercatalog.xml" -Force | Out-Null
+}
+if (Test-Path -Path "$scriptTempDir\lenovodrivercatalog.xml") {
+    Remove-Item -Path "$scriptTempDir\lenovodrivercatalog.xml" -Force | Out-Null
+}
+if (Test-Path -Path "$scriptTempDir\delldrivercatalog.xml") {
+    Remove-Item -Path "$scriptTempDir\delldrivercatalog.xml" -Force | Out-Null
+}
 
 Write-Host "Finished Windows Media Creation CLI" -ForegroundColor Green
