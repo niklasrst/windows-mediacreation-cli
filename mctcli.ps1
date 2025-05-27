@@ -461,8 +461,8 @@ $autounattendXml= @"
             </SetupUILanguage>
             <InputLocale>$localeId</InputLocale>
             <SystemLocale>$RegionCode</SystemLocale>
-            <UILanguage>$RegionCode</UILanguage>
-            <UILanguageFallback>$RegionCode</UILanguageFallback>
+            <UILanguage>$LanguageCode</UILanguage>
+            <UILanguageFallback>$LanguageCode</UILanguageFallback>
             <UserLocale>$RegionCode</UserLocale>
         </component>
         <component name="Microsoft-Windows-Setup" processorArchitecture="$Architecture" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
@@ -578,6 +578,7 @@ Write-Verbose "Cleaning up temporary files"
 Remove-Item -Path $installWimFile -Force | Out-Null
 Remove-Item -Path $setupWimFile -Force | Out-Null
 Remove-Item -Path $bootWimFile -Force | Out-Null
+Remove-Item -Path $productsFile -Force | Out-Null
 Remove-Item -Path $installWimTempDir -Recurse -Force | Out-Null
 Remove-Item -Path $bootWimTempDir -Recurse -Force | Out-Null
 Remove-Item -Path $setupWimTempDir -Recurse -Force | Out-Null
