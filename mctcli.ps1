@@ -278,16 +278,6 @@ try {
     exit
 "@ | diskpart.exe
 
-    <##$efipartition = New-Partition -DiskNumber $UsbDriveId -Size 100MB -GptType "{EBD0A0A2-B9E5-4433-87C0-68B6B72699C7}" -AssignDriveLetter
-    #$efipartition | Format-Volume -FileSystem FAT32 -NewFileSystemLabel "uefi" -Confirm:$false -Force
-    #Write-Verbose "EFI partition is $($efipartition.DriveLetter)"
-
-    $partition = New-Partition -DiskNumber $UsbDriveId -UseMaximumSize -AssignDriveLetter
-    $partition | Format-Volume -FileSystem NTFS -NewFileSystemLabel "windowsmedia" -Confirm:$false
-    
-    $UsbDriveLetter = "$($partition.DriveLetter):"
-    Write-Verbose "New Installmedia is $($partition.DriveLetter)"#>
-
     $efiPartition = New-Partition -DiskNumber $UsbDriveId -Size 1024MB -AssignDriveLetter
     $efiPartitionDriveLetter = "$($efiPartition.DriveLetter):"
     Format-Volume -Partition $efiPartition -FileSystem FAT32 -NewFileSystemLabel "boot" -Confirm:$false
@@ -354,9 +344,6 @@ Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7
 #Copy-Item -Path "$UsbDriveLetter\efi\*" -Destination "$($efipartition.DriveLetter):" -Recurse -Force | Out-Null
 #Copy-Item -Path "$UsbDriveLetter\bootmgr" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
 #Copy-Item -Path "$UsbDriveLetter\bootmgr.efi" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
-
-#Write-Verbose "Hiding EFI partition $($efipartition.DriveLetter)..."
-#Get-Volume -DriveLetter $($efipartition.DriveLetter) | Get-Partition | Remove-PartitionAccessPath -AccessPath "$($efipartition.DriveLetter):\"
 
 # Add bootstick tools
 Write-Verbose "Creating autounattend.xml file..."
@@ -587,7 +574,12 @@ $autounattendXml= @"
 $autounattendXml | Set-Content -Path "$UsbDriveLetter\autounattend.xml" -Force
 
 # Cleanup
-#Write-Verbose "Cleaning up temporary files"
-#Remove-Item -Path $scriptTempDir -Recurse -Force | Out-Null
+Write-Verbose "Cleaning up temporary files"
+Remove-Item -Path $installWimFile -Force | Out-Null
+Remove-Item -Path $setupWimFile -Force | Out-Null
+Remove-Item -Path $bootWimFile -Force | Out-Null
+Remove-Item -Path $installWimTempDir -Recurse -Force | Out-Null
+Remove-Item -Path $bootWimTempDir -Recurse -Force | Out-Null
+Remove-Item -Path $setupWimTempDir -Recurse -Force | Out-Null
 
 Write-Host "Finished Windows Media Creation CLI" -ForegroundColor Green
