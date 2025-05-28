@@ -307,7 +307,6 @@ try {
     $dataPartition = New-Partition -DiskNumber $UsbDriveId -UseMaximumSize -AssignDriveLetter
     $UsbDriveLetter = "$($dataPartition.DriveLetter):"
     Format-Volume -Partition $dataPartition -FileSystem NTFS -NewFileSystemLabel "windowsmedia" -Confirm:$false
-
 }
 catch {
     Write-Error "Failed to format USB drive $UsbDriveLetter. Please check the drive and try again."
@@ -327,87 +326,6 @@ if (($usbDriveFileSystem -ne "NTFS") -and ((Get-Disk -Number $UsbDriveId).Partit
 Write-Verbose "Copying Windows Setup files to USB drive $UsbDriveLetter..."
 Copy-Item -Path "$setupWimTempDir\*" -Destination "$UsbDriveLetter" -Recurse -Force | Out-Null
 Move-Item -Path "$UsbDriveLetter\sources\_manifest" -Destination "$UsbDriveLetter\" -Force | Out-Null
-
-Write-Verbose "Adding driver directory..."
-New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
-
-switch ($DriverManufacturer) {
-    "Dell" 
-    {
-        Write-Verbose "Searching Dell drivers for $DriverModel ..."
-        Invoke-WebRequest -Uri "https://downloads.dell.com/catalog/driverpackcatalog.cab" -OutFile "$scriptTempDir\delldrivercatalog.cab"
-        Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\delldrivercatalog.cab $scriptTempDir\delldrivercatalog.xml" -Wait | Out-Null
-        Remove-Item -Path "$scriptTempDir\delldrivercatalog.cab" -Force | Out-Null
-        $driversXmlPath = "$scriptTempDir\delldrivercatalog.xml"
-        [xml]$driversXml = Get-Content -Path $driversXmlPath
-
-        $dellDriverPath = $driversXml.DriverPackManifest.DriverPackage.Path | Where-Object { $_ -match "$DriverModel.*$SupportedOsVersion" } | Select-Object -First 1
-        $dellDriverUrl = $baseDownloadUrl + $dellDriverPath
-        $dellDriverSetup = $dellDriverPath -replace ".*($($DriverModel).*)", '$1'
-
-        if ($null -eq $dellDriverUrl) {
-            Write-Verbose "No Dell driver found for $DriverModel. Skipping driver download."
-        } else {
-            Write-Verbose "Found Dell driver URL for $DriverModel $dellDriverUrl"
-            Invoke-WebRequest -Uri "https://downloads.dell.com/$($dellDriverUrl)" -OutFile "$scriptTempDir\$dellDriverSetup"
-        }
-        
-        Write-Verbose "Extracting Dell driver $dellDriverSetup to driverpackTempDir ..."
-        #TODO: Extract driver pack
-        Write-Verbose "Copying Dell driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-        #TODO: Move driver pack to usb
-    }
-    "Lenovo" 
-    {
-        Write-Verbose "Searching Lenovo drivers for $DriverModel ..."
-        Invoke-WebRequest -Uri "https://download.lenovo.com/cdrt/td/catalogv2.xml" -OutFile "$scriptTempDir\lenovodrivercatalog.xml"
-        $driversXmlPath = "$scriptTempDir\lenovodrivercatalog.xml"
-        [xml]$driversXml = Get-Content -Path $driversXmlPath
-
-        $lenovoDriverPath = $driversXml.ModelList.Model | Where-Object { $_.name -match $DriverModel }
-        $lenovoDriverPathNode = $lenovoDriverPath.SCCM | Where-Object { $_.os -eq "$SupportedOsVersion" } | Select-Object -Last 1
-        $lenovoDriverUrl = $lenovoDriverPathNode.'#text'
-        $lenovoDriverSetup = $lenovoDriverPath -replace '.*/', ''
-
-        if ($null -eq $lenovoDriverUrl) {
-            Write-Verbose "No Lenovo driver found for $DriverModel. Skipping driver download."
-        } else {
-            Write-Verbose "Found Lenovo driver URL for $DriverModel $lenovoDriverUrl"
-            Invoke-WebRequest -Uri $lenovoDriverUrl -OutFile "$scriptTempDir\$lenovoDriverSetup"
-        }
-
-        
-        Write-Verbose "Extracting Lenovo driver $lenovoDriverSetup to $driverpackTempDir ..."
-        #TODO: Extract driver pack
-        Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-        #TODO: Move driver pack to usb
-    }
-    "HP" 
-    {
-        Write-Verbose "Searching HP drivers for $DriverModel ..."
-        Invoke-WebRequest -Uri "https://hpia.hpcloud.hp.com/downloads/driverpackcatalog/HPClientDriverPackCatalog.cab" -OutFile "$scriptTempDir\hpdrivercatalog.cab"
-        Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\hpdrivercatalog.cab $scriptTempDir\hpdrivercatalog.xml" -Wait | Out-Null
-        Remove-Item -Path "$scriptTempDir\hpdrivercatalog.cab" -Force | Out-Null
-        $driversXmlPath = "$scriptTempDir\hpdrivercatalog.xml"
-        [xml]$driversXml = Get-Content -Path $driversXmlPath
-
-        $hpDriverPath = $driversXml.NewDataSet.HPClientDriverPackCatalog.SoftPaqList.SoftPaq | Where-Object { ($_.name -match $DriverModel) -and ($_.name -match "$($SupportedOsVersionFull)") } | Sort-Object id | Select-Object -First 1
-        $hpDriverUrl = $hpDriverPath.Url
-        $hpDriverSetup = $hpDriverUrl -replace '.*/', ''
-
-        if ($null -eq $hpDriverUrl) {
-            Write-Verbose "No HP driver found for $DriverModel. Skipping driver download."
-        } else {
-            Write-Verbose "Found HP driver URL for $DriverModel $hpDriverUrl"
-            Invoke-WebRequest -Uri $hpDriverUrl -OutFile "$scriptTempDir\$hpDriverSetup"
-        }
-        
-        Write-Verbose "Extracting HP driver $hpDriverSetup to $driverpackTempDir ..."
-        #TODO: Extract driver pack
-        Write-Verbose "Copying HP driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-        #TODO: Move driver pack to usb
-    }
-}
 
 Write-Verbose "Unmount Setup WIM..."
 Dismount-WindowsImage -Path $setupWimTempDir -Discard | Out-Null
@@ -445,6 +363,92 @@ Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7
 #Copy-Item -Path "$UsbDriveLetter\efi\*" -Destination "$($efipartition.DriveLetter):" -Recurse -Force | Out-Null
 #Copy-Item -Path "$UsbDriveLetter\bootmgr" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
 #Copy-Item -Path "$UsbDriveLetter\bootmgr.efi" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
+
+Write-Verbose "Adding driver directory..."
+New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
+
+switch ($DriverManufacturer) {
+    "Dell" 
+    {
+        Write-Verbose "Searching Dell drivers for $DriverModel ..."
+        Invoke-WebRequest -Uri "https://downloads.dell.com/catalog/driverpackcatalog.cab" -OutFile "$scriptTempDir\delldrivercatalog.cab"
+        Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\delldrivercatalog.cab $scriptTempDir\delldrivercatalog.xml" -Wait | Out-Null
+        Remove-Item -Path "$scriptTempDir\delldrivercatalog.cab" -Force | Out-Null
+        $driversXmlPath = "$scriptTempDir\delldrivercatalog.xml"
+        [xml]$driversXml = Get-Content -Path $driversXmlPath
+
+        $dellDriverPath = $driversXml.DriverPackManifest.DriverPackage.Path | Where-Object { $_ -match "$DriverModel.*$SupportedOsVersion" } | Select-Object -First 1
+        $dellDriverUrl = $baseDownloadUrl + $dellDriverPath
+        $dellDriverSetup = $dellDriverPath -replace ".*($($DriverModel).*)", '$1'
+
+        if ($null -eq $dellDriverUrl) {
+            Write-Verbose "No Dell driver found for $DriverModel. Skipping driver download."
+        } else {
+            Write-Verbose "Found Dell driver URL for $DriverModel $dellDriverUrl"
+            Invoke-WebRequest -Uri "https://downloads.dell.com/$($dellDriverUrl)" -OutFile "$scriptTempDir\$dellDriverSetup"
+        }
+        
+        Write-Verbose "Extracting Dell driver $dellDriverSetup to driverpackTempDir ..."
+        #TODO: Extract driver pack
+        Write-Verbose "Copying Dell driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
+        New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
+        Copy-Item -Path "$scriptTempDir\$dellDriverSetup" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Force | Out-Null #FOR TESTING / REMOVE LATER
+        #TODO: Move driver pack to usb
+    }
+    "Lenovo" 
+    {
+        Write-Verbose "Searching Lenovo drivers for $DriverModel ..."
+        Invoke-WebRequest -Uri "https://download.lenovo.com/cdrt/td/catalogv2.xml" -OutFile "$scriptTempDir\lenovodrivercatalog.xml"
+        $driversXmlPath = "$scriptTempDir\lenovodrivercatalog.xml"
+        [xml]$driversXml = Get-Content -Path $driversXmlPath
+
+        $lenovoDriverPath = $driversXml.ModelList.Model | Where-Object { $_.name -match $DriverModel }
+        $lenovoDriverPathNode = $lenovoDriverPath.SCCM | Where-Object { $_.os -eq "$SupportedOsVersion" } | Select-Object -Last 1
+        $lenovoDriverUrl = $lenovoDriverPathNode.'#text'
+        $lenovoDriverSetup = $lenovoDriverPath -replace '.*/', ''
+
+        if ($null -eq $lenovoDriverUrl) {
+            Write-Verbose "No Lenovo driver found for $DriverModel. Skipping driver download."
+        } else {
+            Write-Verbose "Found Lenovo driver URL for $DriverModel $lenovoDriverUrl"
+            Invoke-WebRequest -Uri $lenovoDriverUrl -OutFile "$scriptTempDir\$lenovoDriverSetup"
+        }
+
+        Write-Verbose "Extracting Lenovo driver $lenovoDriverSetup to $driverpackTempDir ..."
+        #TODO: Extract driver pack
+        Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
+        New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
+        Copy-Item -Path "$scriptTempDir\$lenovoDriverSetup" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Force | Out-Null #FOR TESTING / REMOVE LATER
+        #TODO: Move driver pack to usb
+    }
+    "HP" 
+    {
+        Write-Verbose "Searching HP drivers for $DriverModel ..."
+        Invoke-WebRequest -Uri "https://hpia.hpcloud.hp.com/downloads/driverpackcatalog/HPClientDriverPackCatalog.cab" -OutFile "$scriptTempDir\hpdrivercatalog.cab"
+        Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\hpdrivercatalog.cab $scriptTempDir\hpdrivercatalog.xml" -Wait | Out-Null
+        Remove-Item -Path "$scriptTempDir\hpdrivercatalog.cab" -Force | Out-Null
+        $driversXmlPath = "$scriptTempDir\hpdrivercatalog.xml"
+        [xml]$driversXml = Get-Content -Path $driversXmlPath
+
+        $hpDriverPath = $driversXml.NewDataSet.HPClientDriverPackCatalog.SoftPaqList.SoftPaq | Where-Object { ($_.name -match $DriverModel) -and ($_.name -match "$($SupportedOsVersionFull)") } | Sort-Object id | Select-Object -First 1
+        $hpDriverUrl = $hpDriverPath.Url
+        $hpDriverSetup = $hpDriverUrl -replace '.*/', ''
+
+        if ($null -eq $hpDriverUrl) {
+            Write-Verbose "No HP driver found for $DriverModel. Skipping driver download."
+        } else {
+            Write-Verbose "Found HP driver URL for $DriverModel $hpDriverUrl"
+            Invoke-WebRequest -Uri $hpDriverUrl -OutFile "$scriptTempDir\$hpDriverSetup"
+        }
+        
+        Write-Verbose "Extracting HP driver $hpDriverSetup to $driverpackTempDir ..."
+        #TODO: Extract driver pack
+        Write-Verbose "Copying HP driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
+        New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
+        Copy-Item -Path "$scriptTempDir\$hpDriverSetup" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Force | Out-Null #FOR TESTING / REMOVE LATER
+        #TODO: Move driver pack to usb
+    }
+}
 
 # Add bootstick tools
 Write-Verbose "Cloning Troubleshooting tools..."
@@ -691,12 +695,15 @@ Remove-Item -Path $setupWimTempDir -Recurse -Force | Out-Null
 Remove-Item -Path $driverpackTempDir -Recurse -Force | Out-Null
 if (Test-Path -Path "$scriptTempDir\hpdrivercatalog.xml") {
     Remove-Item -Path "$scriptTempDir\hpdrivercatalog.xml" -Force | Out-Null
+    Remove-Item -Path "$scriptTempDir\$hpDriverSetup" -Force | Out-Null
 }
 if (Test-Path -Path "$scriptTempDir\lenovodrivercatalog.xml") {
     Remove-Item -Path "$scriptTempDir\lenovodrivercatalog.xml" -Force | Out-Null
+    Remove-Item -Path "$scriptTempDir\$lenovoDriverSetup" -Force | Out-Null
 }
 if (Test-Path -Path "$scriptTempDir\delldrivercatalog.xml") {
     Remove-Item -Path "$scriptTempDir\delldrivercatalog.xml" -Force | Out-Null
+    Remove-Item -Path "$scriptTempDir\$dellDriverSetup" -Force | Out-Null
 }
 
 Write-Host "Finished Windows Media Creation CLI" -ForegroundColor Green
