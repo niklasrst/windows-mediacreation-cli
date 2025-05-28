@@ -2,14 +2,57 @@
 
 This repo contains my solution of a media creation tool to create Windows Installation media using PowerShell.
 
+<span style="color:cornflowerblue;font-weight:bold">🛈  HINT</span><br/>
+    If you want to use the script, grab the latest release as the script version in the code is work-in-progress.
+
 ## Introduction
 I´ve created this script as I wanted to automate the creation of usb-drives with Windows installation media.
 So I came up with the idea to create a parameter based PowerShell script to ask for the needed details and then fully automated create a usb-drive, containing the Windows installation media. It currently supports the last 4 versions of Windows 11.
 
 ## How to use it?
-
+Use this command to run the script with the minimal required set of parameters.
 ```powershell
-.\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "en-us" -RegionCode "de-de" -Edition Pro -UsbDriveLetter "D:" -Verbose
+# Minimal parameter setup
+.\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "en-us" -Edition Pro -UsbDriveLetter "D:" -Verbose
+```
+
+### Parameter defenitions
+Check out the following section to learn what the parameters are used for.
+``` powershell
+#-Architecture
+    The architecture of Windows to download. Valid values are amd64 or arm64.
+    The default is x64.
+
+#-Build
+    The build number of Windows to download. Valid values are "21H2", "22H2", "23H2", "24H2".
+    The default is the 24H2 build.
+
+#-LanguageCode
+    The language code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
+    The default is en-us.
+
+#-RegionCode
+    The regional code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
+    The default is en-us and will be matched to LanuageCode. if not set.
+
+#-Edition
+        The edition of Windows to download. Valid values are "Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N"
+        The default is Pro.
+
+#-UsbDriveLetter
+    The drive letter of the USB drive to create the bootable media.
+    For example "E:".
+
+#-DriverManufacturer
+    The manufacturer of the drivers to download. Valid values are "Dell", "Lenovo", "HP".
+    The default is not set.
+
+#-DriverModel
+    The model of the drivers to download. This is optional and will be used to filter the drivers from the manufacturer.
+    For example "XPS 13" for Dell or "ThinkPad X1 Carbon" for Lenovo.
+
+#-Verbose
+   Enable verbose output.
 ```
 
 ## How it works?
@@ -17,13 +60,13 @@ So I came up with the idea to create a parameter based PowerShell script to ask 
 <span style="color:cornflowerblue;font-weight:bold">🛈  HINT</span><br/>
     I will update this part to tell you very granulary how the script works and what id does ;)
 
-Firstly the script is looking for the windows manifest file for [Windows11](https://go.microsoft.com/fwlink/?LinkId=2156292).
+1. Firstly the script is looking for the windows manifest file for [Windows11](https://go.microsoft.com/fwlink/?LinkId=2156292).
 
-Next is to filter the list, based on the parameters to get the version that you want to download.
+2. Next is to filter the list, based on the parameters to get the version that you want to download.
 
-Once it figured the right download url from the manifest file it will start downloading the right `esd` file, which will be converted to `.wim` with the edition that you need.
+3. Once it figured the right download url from the manifest file it will start downloading the right `esd` file, which will be converted to `.wim` with the edition that you need.
 
-Lastly it is formatting the usb-drive and placing the installation media on it.
+4. Lastly it is formatting the usb-drive and placing the installation media on it.
 I wanted to use `NTFS` as the filesystem hosting the install files as it enables larger `.wim` files and/or driverpacks. So I used the [Rufus Bootloader](https://github.com/pbatard/uefi-ntfs) which will added to a smaller `FAT32` partition on the usb-drive which will initiate the bootsequence and loads the install files from the `NTFS` partition, which both will be created from my script.
 
 ## 🤝 Contributing
