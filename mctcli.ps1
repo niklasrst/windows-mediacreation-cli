@@ -321,7 +321,7 @@ Copy-Item -Path "$setupWimTempDir\*" -Destination "$UsbDriveLetter" -Recurse -Fo
 Move-Item -Path "$UsbDriveLetter\sources\_manifest" -Destination "$UsbDriveLetter\" -Force | Out-Null
 
 Write-Verbose "Adding driver directory..."
-New-Item -Path "$UsbDriveLetter" -Name "$UsbDriveLetter" -ItemType Directory -Force | Out-Null
+New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
 
 switch ($DriverManufacturer) {
     "Dell" 
