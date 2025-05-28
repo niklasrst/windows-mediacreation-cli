@@ -36,8 +36,8 @@ Check out the following section to learn what the parameters are used for.
     The default is en-us and will be matched to LanuageCode. if not set.
 
 #-Edition
-        The edition of Windows to download. Valid values are "Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N"
-        The default is Pro.
+    The edition of Windows to download. Valid values are "Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N"
+    The default is Pro.
 
 #-UsbDriveLetter
     The drive letter of the USB drive to create the bootable media.
@@ -49,7 +49,7 @@ Check out the following section to learn what the parameters are used for.
 
 #-DriverModel
     The model of the drivers to download. This is optional and will be used to filter the drivers from the manufacturer.
-    For example "XPS 13" for Dell or "ThinkPad X1 Carbon" for Lenovo.
+    For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X280" or (HP) "HP Z6 G5".
 
 #-Verbose
    Enable verbose output.
