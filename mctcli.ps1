@@ -35,7 +35,7 @@
 
 .PARAMETER -DriverModel
     The model of the drivers to download. This is optional and will be used to filter the drivers from the manufacturer.
-    For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X280" or (HP) "HP Z6 G5".
+    For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X280" or (HP) "Z6 G5".
 
 .PARAMETER -Verbose
    Enable verbose output.
@@ -86,23 +86,17 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
     Write-Error "This script requires PowerShell 7 or higher. Please upgrade your PowerShell version."
     exit 1
 }
-if ((Test-NetConnection -ComputerName "www.microsoft.com" -Port 80).TcpTestSucceeded -ne $true) {
-    Write-Error "Could not connect to Microsoft which is needed for the installation media. Please ensure connectivity to Microsoft.com and try again."
-    exit 1
-}
-if ((Test-NetConnection -ComputerName "www.github.com" -Port 80).TcpTestSucceeded -ne $true) {
-    Write-Error "Could not connect to Github which is needed for the UEFI drivers. Please ensure connectivity to Github.com and try again."
-    exit 1
-}
 if ([int]((Get-PSDrive -PSProvider 'FileSystem' | Where-Object { $_.Root -eq "$($env:SystemDrive)\" }).Free / 1GB) -lt 10) {
     Write-Error "No enough disk space. Please ensure that at least 10GB of disk space are available and try again."
     exit 1
 }
 
 # Variables
+$startTime = Get-Date -Format "HH:mm:ss"
 $IsoArchitecture = $null
 $IsoEdition = $null
 $SupportedOsVersion = "Win11"
+$SupportedOsVersionShort = "W11"
 $SupportedOsVersionFull = "Windows 11"
 $BootloaderManufacturer = "Rufus"
 $scriptTempDir = "$env:temp\mctcli"
@@ -138,7 +132,7 @@ Set-Location $scriptTempDir
 
 Write-Verbose "Parameters"
 Write-Verbose "Architecture: $Architecture"
-Write-Verbose "Operating System Version Support: $SupportedOsVersionFull ($SupportedOsVersion)"
+Write-Verbose "Operating System Version Support: $SupportedOsVersionFull ($SupportedOsVersion / $SupportedOsVersionShort)"
 Write-Verbose "Build: $Build"
 Write-Verbose "LanguageCode: $LanguageCode"
 Write-Verbose "RegionCode: $RegionCode"
@@ -148,7 +142,7 @@ Write-Verbose "DriverManufacturer: $DriverManufacturer"
 Write-Verbose "DriverModel: $DriverModel"
 Write-Verbose "Working Directory: $scriptTempDir"
 Write-Verbose "------------------------------------------------------"
-Write-Verbose "Starting Windows Media Creation CLI"
+Write-Verbose "Starting Windows Media Creation CLI at $startTime"
 
 switch ($Edition){
     "Home" { $IsoEdition = "CLIENTCONSUMER_RET" }
@@ -182,6 +176,10 @@ if (-not $RegionCode -or [string]::IsNullOrWhiteSpace($RegionCode)) {
 }
 
 # Download Manifest
+if ((Test-NetConnection -ComputerName "microsoft.com" -Port 80).TcpTestSucceeded -ne $true) {
+    Write-Error "Could not connect to Microsoft which is needed for the installation media. Please ensure connectivity to Microsoft.com and try again."
+    exit 1
+}
 $Url = "https://go.microsoft.com/fwlink/?LinkId=2156292" 
 Write-Verbose "Downloading Manifest from $($Url) to $scriptTempDir..."
 Invoke-WebRequest -Uri $Url -OutFile "$scriptTempDir\manifest.cab"
@@ -342,27 +340,32 @@ Write-Verbose "Copying Windows install.wim to USB drive $UsbDriveLetter..."
 Copy-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Recurse -Force | Out-Null
 
 Write-Verbose "Copying EFI Files to $efipartition.DriveLetter..."
-Copy-Item "$UsbDriveLetter\boot" "$efiPartitionDriveLetter\" -Recurse
-#Copy-Item "$UsbDriveLetter\efi" "$efiPartitionDriveLetter\" -Recurse
-New-Item -Path "$efiPartitionDriveLetter" -Name "efi" -ItemType Directory -Force | Out-Null
-New-Item -Path "$efiPartitionDriveLetter\efi" -Name "Boot" -ItemType Directory -Force | Out-Null
-New-Item -Path "$efiPartitionDriveLetter\efi" -Name "$BootloaderManufacturer" -ItemType Directory -Force | Out-Null
-#https://github.com/pbatard/uefi-ntfs/releases/tag/v2.5
-Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootaa64.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootaa64.efi"
-Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootarm.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootarm.efi"
-Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootia32.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootia32.efi"
-Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootx64.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootx64.efi"
-#https://github.com/pbatard/ntfs-3g/releases
-Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_aa64.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_aa64.efi"
-Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_arm.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_arm.efi"
-Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_ia32.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_ia32.efi"
-Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_x64.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_x64.efi"
-#Copy-Item "$UsbDriveLetter\bootmgr*" "$efiPartitionDriveLetter\" -Recurse -ErrorAction SilentlyContinue
-#Copy-Item "$UsbDriveLetter\setup.exe" "$efiPartitionDriveLetter\" -Recurse
-#Copy-Item "$UsbDriveLetter\sources\boot.wim" "$efiPartitionDriveLetter\sources\boot.wim" -Force -Recurse
-#Copy-Item -Path "$UsbDriveLetter\efi\*" -Destination "$($efipartition.DriveLetter):" -Recurse -Force | Out-Null
-#Copy-Item -Path "$UsbDriveLetter\bootmgr" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
-#Copy-Item -Path "$UsbDriveLetter\bootmgr.efi" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
+if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -ne $true) {
+    Write-Error "Could not connect to Github which is needed for the UEFI drivers. Please ensure connectivity to Github.com and try again."
+} else {
+    Copy-Item "$UsbDriveLetter\boot" "$efiPartitionDriveLetter\" -Recurse
+    #Copy-Item "$UsbDriveLetter\efi" "$efiPartitionDriveLetter\" -Recurse
+    New-Item -Path "$efiPartitionDriveLetter" -Name "efi" -ItemType Directory -Force | Out-Null
+    New-Item -Path "$efiPartitionDriveLetter\efi" -Name "Boot" -ItemType Directory -Force | Out-Null
+    New-Item -Path "$efiPartitionDriveLetter\efi" -Name "$BootloaderManufacturer" -ItemType Directory -Force | Out-Null
+    #https://github.com/pbatard/uefi-ntfs/releases/tag/v2.5
+    Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootaa64.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootaa64.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootarm.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootarm.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootia32.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootia32.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootx64.efi" -OutFile "$efiPartitionDriveLetter\efi\Boot\bootx64.efi"
+    #https://github.com/pbatard/ntfs-3g/releases
+    Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_aa64.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_aa64.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_arm.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_arm.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_ia32.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_ia32.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_x64.efi" -OutFile "$efiPartitionDriveLetter\efi\$BootloaderManufacturer\ntfs_x64.efi"
+    #Copy-Item "$UsbDriveLetter\bootmgr*" "$efiPartitionDriveLetter\" -Recurse -ErrorAction SilentlyContinue
+    #Copy-Item "$UsbDriveLetter\setup.exe" "$efiPartitionDriveLetter\" -Recurse
+    #Copy-Item "$UsbDriveLetter\sources\boot.wim" "$efiPartitionDriveLetter\sources\boot.wim" -Force -Recurse
+    #Copy-Item -Path "$UsbDriveLetter\efi\*" -Destination "$($efipartition.DriveLetter):" -Recurse -Force | Out-Null
+    #Copy-Item -Path "$UsbDriveLetter\bootmgr" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
+    #Copy-Item -Path "$UsbDriveLetter\bootmgr.efi" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
+}
+
 
 Write-Verbose "Adding driver directory..."
 New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
@@ -370,91 +373,116 @@ New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Ou
 switch ($DriverManufacturer) {
     "Dell" 
     {
-        Write-Verbose "Searching Dell drivers for $DriverModel ..."
-        Invoke-WebRequest -Uri "https://downloads.dell.com/catalog/driverpackcatalog.cab" -OutFile "$scriptTempDir\delldrivercatalog.cab"
-        Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\delldrivercatalog.cab $scriptTempDir\delldrivercatalog.xml" -Wait | Out-Null
-        Remove-Item -Path "$scriptTempDir\delldrivercatalog.cab" -Force | Out-Null
-        $driversXmlPath = "$scriptTempDir\delldrivercatalog.xml"
-        [xml]$driversXml = Get-Content -Path $driversXmlPath
-
-        $dellDriverPath = $driversXml.DriverPackManifest.DriverPackage.Path | Where-Object { $_ -match "$DriverModel.*$SupportedOsVersion" } | Select-Object -First 1
-        $dellDriverUrl = $baseDownloadUrl + $dellDriverPath
-        $dellDriverSetup = $dellDriverPath -replace ".*($($DriverModel).*)", '$1'
-
-        if ($null -eq $dellDriverUrl) {
-            Write-Verbose "No Dell driver found for $DriverModel. Skipping driver download."
+        if ((Test-NetConnection -ComputerName "dell.com" -Port 80).TcpTestSucceeded -ne $true) {
+            Write-Error "Could not connect to Dell which is needed for the drivers. Please ensure connectivity to dell.com and try again."
         } else {
-            Write-Verbose "Found Dell driver URL for $DriverModel $dellDriverUrl"
-            Invoke-WebRequest -Uri "https://downloads.dell.com/$($dellDriverUrl)" -OutFile "$scriptTempDir\$dellDriverSetup"
+            Write-Verbose "Searching Dell drivers for $DriverModel ..."
+            if ($DriverModel -match "\s") {
+                Write-Verbose "Replacing spaces in DriverModel with dashes..."
+                $DriverModel = $DriverModel -replace '\s', '-'
+            }
+            Invoke-WebRequest -Uri "https://downloads.dell.com/catalog/driverpackcatalog.cab" -OutFile "$scriptTempDir\delldrivercatalog.cab"
+            Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\delldrivercatalog.cab $scriptTempDir\delldrivercatalog.xml" -Wait | Out-Null
+            Remove-Item -Path "$scriptTempDir\delldrivercatalog.cab" -Force | Out-Null
+            $driversXmlPath = "$scriptTempDir\delldrivercatalog.xml"
+            [xml]$driversXml = Get-Content -Path $driversXmlPath
+
+            $dellDriverPath = $driversXml.DriverPackManifest.DriverPackage.Path | Where-Object { $_ -match "$DriverModel.*$SupportedOsVersion" } | Select-Object -First 1
+            $dellDriverUrl = $baseDownloadUrl + $dellDriverPath
+            $dellDriverSetup = $dellDriverPath -replace ".*($($DriverModel).*)", '$1'
+
+            if ($null -eq $dellDriverUrl) {
+                Write-Verbose "No Dell driver found for $DriverModel. Skipping driver download."
+            } else {
+                Write-Verbose "Found Dell driver URL for $DriverModel $dellDriverUrl"
+                Invoke-WebRequest -Uri "https://downloads.dell.com/$($dellDriverUrl)" -OutFile "$scriptTempDir\$dellDriverSetup"
+            
+                Write-Verbose "Extracting Dell driver $dellDriverSetup to $driverpackTempDir ..."
+                Start-Process -FilePath "$scriptTempDir\$dellDriverSetup" -ArgumentList "/s /e=$driverpackTempDir" -Wait
+
+                Write-Verbose "Copying Dell driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
+                New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
+                Copy-Item -Path "$driverpackTempDir\$($DriverModel)\$($SupportedOsVersion)\$($IsoArchitecture)\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
+            }   
         }
-        
-        Write-Verbose "Extracting Dell driver $dellDriverSetup to driverpackTempDir ..."
-        #TODO: Extract driver pack
-        Write-Verbose "Copying Dell driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-        New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
-        Copy-Item -Path "$scriptTempDir\$dellDriverSetup" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Force | Out-Null #FOR TESTING / REMOVE LATER
-        #TODO: Move driver pack to usb
     }
     "Lenovo" 
     {
-        Write-Verbose "Searching Lenovo drivers for $DriverModel ..."
-        Invoke-WebRequest -Uri "https://download.lenovo.com/cdrt/td/catalogv2.xml" -OutFile "$scriptTempDir\lenovodrivercatalog.xml"
-        $driversXmlPath = "$scriptTempDir\lenovodrivercatalog.xml"
-        [xml]$driversXml = Get-Content -Path $driversXmlPath
-
-        $lenovoDriverPath = $driversXml.ModelList.Model | Where-Object { $_.name -match $DriverModel }
-        $lenovoDriverPathNode = $lenovoDriverPath.SCCM | Where-Object { $_.os -eq "$SupportedOsVersion" } | Select-Object -Last 1
-        $lenovoDriverUrl = $lenovoDriverPathNode.'#text'
-        $lenovoDriverSetup = $lenovoDriverPath -replace '.*/', ''
-
-        if ($null -eq $lenovoDriverUrl) {
-            Write-Verbose "No Lenovo driver found for $DriverModel. Skipping driver download."
+        if ((Test-NetConnection -ComputerName "lenovo.com" -Port 80).TcpTestSucceeded -ne $true) {
+            Write-Error "Could not connect to Lenovo which is needed for the drivers. Please ensure connectivity to lenovo.com and try again."
         } else {
-            Write-Verbose "Found Lenovo driver URL for $DriverModel $lenovoDriverUrl"
-            Invoke-WebRequest -Uri $lenovoDriverUrl -OutFile "$scriptTempDir\$lenovoDriverSetup"
-        }
+            Write-Verbose "Searching Lenovo drivers for $DriverModel ..."
+            Invoke-WebRequest -Uri "https://download.lenovo.com/cdrt/td/catalogv2.xml" -OutFile "$scriptTempDir\lenovodrivercatalog.xml"
+            $driversXmlPath = "$scriptTempDir\lenovodrivercatalog.xml"
+            [xml]$driversXml = Get-Content -Path $driversXmlPath
 
-        Write-Verbose "Extracting Lenovo driver $lenovoDriverSetup to $driverpackTempDir ..."
-        #TODO: Extract driver pack
-        Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-        New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
-        Copy-Item -Path "$scriptTempDir\$lenovoDriverSetup" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Force | Out-Null #FOR TESTING / REMOVE LATER
-        #TODO: Move driver pack to usb
+            $lenovoDriverPath = $driversXml.ModelList.Model | Where-Object { $_.name -match $DriverModel }
+            $lenovoDriverPathNode = $lenovoDriverPath.SCCM | Where-Object { $_.os -eq "$SupportedOsVersion" } | Select-Object -Last 1
+            $lenovoDriverUrl = $lenovoDriverPathNode.'#text'
+            $lenovoDriverSetup = $lenovoDriverUrl -replace '.*/', ''
+
+            if ($null -eq $lenovoDriverUrl) {
+                Write-Verbose "No Lenovo driver found for $DriverModel. Skipping driver download."
+            } else {
+                Write-Verbose "Found Lenovo driver URL for $DriverModel $lenovoDriverUrl"
+                Invoke-WebRequest -Uri $lenovoDriverUrl -OutFile "$scriptTempDir\$lenovoDriverSetup"
+
+                Write-Verbose "Extracting Lenovo driver $lenovoDriverSetup to $driverpackTempDir ..."
+                Start-Process -FilePath "$scriptTempDir\$lenovoDriverSetup" -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-" -Wait
+                Move-Item -Path "C:\Drivers" -Destination $driverpackTempDir -Force | Out-Null
+                $driverModelPath = $lenovoDriverSetup -replace ".exe", ""
+                $extractDir = (Get-ChildItem -Path "$driverpackTempDir\Drivers\SCCM\$($driverModelPath)").Name
+
+                Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
+                New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
+                Copy-Item -Path "$driverpackTempDir\Drivers\SCCM\$($driverModelPath)\$($extractDir)\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
+            }
+        }
     }
     "HP" 
     {
-        Write-Verbose "Searching HP drivers for $DriverModel ..."
-        Invoke-WebRequest -Uri "https://hpia.hpcloud.hp.com/downloads/driverpackcatalog/HPClientDriverPackCatalog.cab" -OutFile "$scriptTempDir\hpdrivercatalog.cab"
-        Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\hpdrivercatalog.cab $scriptTempDir\hpdrivercatalog.xml" -Wait | Out-Null
-        Remove-Item -Path "$scriptTempDir\hpdrivercatalog.cab" -Force | Out-Null
-        $driversXmlPath = "$scriptTempDir\hpdrivercatalog.xml"
-        [xml]$driversXml = Get-Content -Path $driversXmlPath
-
-        $hpDriverPath = $driversXml.NewDataSet.HPClientDriverPackCatalog.SoftPaqList.SoftPaq | Where-Object { ($_.name -match $DriverModel) -and ($_.name -match "$($SupportedOsVersionFull)") } | Sort-Object id | Select-Object -First 1
-        $hpDriverUrl = $hpDriverPath.Url
-        $hpDriverSetup = $hpDriverUrl -replace '.*/', ''
-
-        if ($null -eq $hpDriverUrl) {
-            Write-Verbose "No HP driver found for $DriverModel. Skipping driver download."
+        if ((Test-NetConnection -ComputerName "hp.com" -Port 80).TcpTestSucceeded -ne $true) {
+            Write-Error "Could not connect to HP which is needed for the drivers. Please ensure connectivity to hp.com and try again."
         } else {
-            Write-Verbose "Found HP driver URL for $DriverModel $hpDriverUrl"
-            Invoke-WebRequest -Uri $hpDriverUrl -OutFile "$scriptTempDir\$hpDriverSetup"
+            Write-Verbose "Searching HP drivers for $DriverModel ..."
+            Invoke-WebRequest -Uri "https://hpia.hpcloud.hp.com/downloads/driverpackcatalog/HPClientDriverPackCatalog.cab" -OutFile "$scriptTempDir\hpdrivercatalog.cab"
+            Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\hpdrivercatalog.cab $scriptTempDir\hpdrivercatalog.xml" -Wait | Out-Null
+            Remove-Item -Path "$scriptTempDir\hpdrivercatalog.cab" -Force | Out-Null
+            $driversXmlPath = "$scriptTempDir\hpdrivercatalog.xml"
+            [xml]$driversXml = Get-Content -Path $driversXmlPath
+
+            $hpDriverPath = $driversXml.NewDataSet.HPClientDriverPackCatalog.SoftPaqList.SoftPaq | Where-Object { ($_.name -match $DriverModel) -and ($_.name -match "$($SupportedOsVersionFull)") } | Sort-Object id | Select-Object -First 1
+            $hpDriverUrl = $hpDriverPath.Url
+            $hpDriverSetup = $hpDriverUrl -replace '.*/', ''
+
+            if ($null -eq $hpDriverUrl) {
+                Write-Verbose "No HP driver found for $DriverModel. Skipping driver download."
+            } else {
+                Write-Verbose "Found HP driver URL for $DriverModel $hpDriverUrl"
+                Invoke-WebRequest -Uri $hpDriverUrl -OutFile "$scriptTempDir\$hpDriverSetup"
+
+                Write-Verbose "Extracting HP driver $hpDriverSetup to $driverpackTempDir ..."
+                Start-Process -FilePath "$scriptTempDir\$hpDriverSetup" -ArgumentList "/s /e /f $driverpackTempDir" -Wait
+
+                Write-Verbose "Copying HP driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
+                New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
+                $searchString = $DriverModel -replace " ", "*"
+                $extractDir = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -like "*$searchString*" } | Get-ChildItem).FullName
+                Copy-Item -Path "$($extractDir)\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
+            }
         }
-        
-        Write-Verbose "Extracting HP driver $hpDriverSetup to $driverpackTempDir ..."
-        #TODO: Extract driver pack
-        Write-Verbose "Copying HP driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-        New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
-        Copy-Item -Path "$scriptTempDir\$hpDriverSetup" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Force | Out-Null #FOR TESTING / REMOVE LATER
-        #TODO: Move driver pack to usb
     }
 }
 
 # Add bootstick tools
-Write-Verbose "Cloning Troubleshooting tools..."
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/andrew-s-taylor/WindowsAutopilotInfo/refs/heads/main/Community%20Version/Get-AutopilotDiagnosticsCommunity.ps1" -OutFile "$UsbDriveLetter\Get-AutopilotDiagnosticsCommunity.ps1"
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/andrew-s-taylor/WindowsAutopilotInfo/refs/heads/main/Community%20Version/get-windowsautopilotinfocommunity.ps1" -OutFile "$UsbDriveLetter\Get-WindowsAutopilotInfoCommunity.ps1"
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/refs/heads/main/Get-IntuneManagementExtensionDiagnostics.ps1" -OutFile "$UsbDriveLetter\Get-IntuneManagementExtensionDiagnostics.ps1"
+if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -ne $true) {
+    Write-Error "Could not connect to Github Usercontent which is needed for the troubleshooting scripts. Please ensure connectivity to githubusercontent.com and try again."
+} else {
+    Write-Verbose "Cloning Troubleshooting tools..."
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/andrew-s-taylor/WindowsAutopilotInfo/refs/heads/main/Community%20Version/Get-AutopilotDiagnosticsCommunity.ps1" -OutFile "$UsbDriveLetter\Get-AutopilotDiagnosticsCommunity.ps1"
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/andrew-s-taylor/WindowsAutopilotInfo/refs/heads/main/Community%20Version/get-windowsautopilotinfocommunity.ps1" -OutFile "$UsbDriveLetter\Get-WindowsAutopilotInfoCommunity.ps1"
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/refs/heads/main/Get-IntuneManagementExtensionDiagnostics.ps1" -OutFile "$UsbDriveLetter\Get-IntuneManagementExtensionDiagnostics.ps1"
+}
 
 Write-Verbose "Creating autounattend.xml file..."
 $languageHexMap = @{
@@ -646,7 +674,7 @@ $autounattendXml= @"
                         <!-- Windows edition -->
                         <MetaData wcm:action="add">
                             <Key>/IMAGE/NAME</Key>
-                            <Value>Windows 11 $Edition</Value>
+                            <Value>$SupportedOsVersionFull $Edition</Value>
                         </MetaData>
                     </InstallFrom>
                     <InstallTo>
@@ -706,4 +734,4 @@ if (Test-Path -Path "$scriptTempDir\delldrivercatalog.xml") {
     Remove-Item -Path "$scriptTempDir\$dellDriverSetup" -Force | Out-Null
 }
 
-Write-Host "Finished Windows Media Creation CLI" -ForegroundColor Green
+Write-Host ("Finished Windows Media Creation CLI in: {0:hh\:mm\:ss}" -f (New-TimeSpan -Start $startTime -End (Get-Date))) -ForegroundColor Green
