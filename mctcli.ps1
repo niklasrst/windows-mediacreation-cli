@@ -35,7 +35,7 @@
 
 .PARAMETER -DriverModel
     The model of the drivers to download. This is optional and will be used to filter the drivers from the manufacturer.
-    For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X280" or (HP) "Z6 G5".
+    For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X390" or (HP) "Z6 G5".
 
 .PARAMETER -Verbose
    Enable verbose output.
@@ -392,7 +392,7 @@ switch ($DriverManufacturer) {
             $dellDriverSetup = $dellDriverPath -replace ".*($($DriverModel).*)", '$1'
 
             if ($null -eq $dellDriverUrl) {
-                Write-Verbose "No Dell driver found for $DriverModel. Skipping driver download."
+                Write-Error "No Dell driver found for $DriverModel. Skipping driver download."
             } else {
                 Write-Verbose "Found Dell driver URL for $DriverModel $dellDriverUrl"
                 Invoke-WebRequest -Uri "https://downloads.dell.com/$($dellDriverUrl)" -OutFile "$scriptTempDir\$dellDriverSetup"
@@ -401,8 +401,10 @@ switch ($DriverManufacturer) {
                 Start-Process -FilePath "$scriptTempDir\$dellDriverSetup" -ArgumentList "/s /e=$driverpackTempDir" -Wait
 
                 Write-Verbose "Copying Dell driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-                New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
-                Copy-Item -Path "$driverpackTempDir\$($DriverModel)\$($SupportedOsVersion)\$($IsoArchitecture)\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
+                $oemDriverPackDir = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($DriverModel).*" }).FullName
+                $oemDriverPackName = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($DriverModel).*" }).Name
+                $oemDriverMediaDir = $DriverManufacturer + "-" + $oemDriverPackName
+                Copy-Item -Path "$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture\" -Destination "$UsbDriveLetter\drivers\$oemDriverMediaDir" -Recurse -Force | Out-Null
             }   
         }
     }
@@ -422,7 +424,7 @@ switch ($DriverManufacturer) {
             $lenovoDriverSetup = $lenovoDriverUrl -replace '.*/', ''
 
             if ($null -eq $lenovoDriverUrl) {
-                Write-Verbose "No Lenovo driver found for $DriverModel. Skipping driver download."
+                Write-Error "No Lenovo driver found for $DriverModel. Skipping driver download."
             } else {
                 Write-Verbose "Found Lenovo driver URL for $DriverModel $lenovoDriverUrl"
                 Invoke-WebRequest -Uri $lenovoDriverUrl -OutFile "$scriptTempDir\$lenovoDriverSetup"
@@ -431,11 +433,11 @@ switch ($DriverManufacturer) {
                 Start-Process -FilePath "$scriptTempDir\$lenovoDriverSetup" -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-" -Wait
                 Move-Item -Path "C:\Drivers" -Destination $driverpackTempDir -Force | Out-Null
                 $driverModelPath = $lenovoDriverSetup -replace ".exe", ""
-                $extractDir = (Get-ChildItem -Path "$driverpackTempDir\Drivers\SCCM\$($driverModelPath)").Name
+                $extractDir = (Get-ChildItem -Path "$driverpackTempDir\Drivers\SCCM\$($driverModelPath)").FullName
 
                 Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
                 New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
-                Copy-Item -Path "$driverpackTempDir\Drivers\SCCM\$($driverModelPath)\$($extractDir)\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
+                Copy-Item -Path "$extractDir\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
             }
         }
     }
@@ -456,7 +458,7 @@ switch ($DriverManufacturer) {
             $hpDriverSetup = $hpDriverUrl -replace '.*/', ''
 
             if ($null -eq $hpDriverUrl) {
-                Write-Verbose "No HP driver found for $DriverModel. Skipping driver download."
+                Write-Error "No HP driver found for $DriverModel. Skipping driver download."
             } else {
                 Write-Verbose "Found HP driver URL for $DriverModel $hpDriverUrl"
                 Invoke-WebRequest -Uri $hpDriverUrl -OutFile "$scriptTempDir\$hpDriverSetup"
