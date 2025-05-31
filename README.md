@@ -13,45 +13,46 @@ So I came up with the idea to create a parameter based PowerShell script to ask 
 Use this command to run the script with the minimal required set of parameters.
 ```powershell
 # Minimal parameter setup
-.\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "en-us" -Edition Pro -UsbDriveLetter "D:" -Verbose
+.\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:" -Verbose
 ```
 
 ### Parameter defenitions
 Check out the following section to learn what the parameters are used for.
 ``` powershell
-#-Architecture
+#.PARAMETER -Architecture
     The architecture of Windows to download. Valid values are amd64 or arm64.
     The default is x64.
 
-#-Build
+#.PARAMETER -Build
     The build number of Windows to download. Valid values are "21H2", "22H2", "23H2", "24H2".
     The default is the 24H2 build.
 
-#-LanguageCode
+#.PARAMETER -LanguageCode
     The language code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
     The default is en-us.
 
-#-RegionCode
+#.PARAMETER -RegionCode
     The regional code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
     The default is en-us and will be matched to LanuageCode. if not set.
 
-#-Edition
-    The edition of Windows to download. Valid values are "Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N"
-    The default is Pro.
+#.PARAMETER -Edition
+        The edition of Windows to download. Valid values are "Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N"
+        The default is Pro.
 
-#-UsbDriveLetter
+#.PARAMETER -UsbDriveLetter
     The drive letter of the USB drive to create the bootable media.
     For example "E:".
 
-#-DriverManufacturer
+#.PARAMETER -DriverManufacturer
     The manufacturer of the drivers to download. Valid values are "Dell", "Lenovo", "HP".
     The default is not set.
 
-#-DriverModel
+#.PARAMETER -DriverModel
     The model of the drivers to download. This is optional and will be used to filter the drivers from the manufacturer.
-    For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X280" or (HP) "HP Z6 G5".
+    For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X280" or (HP) "Z6 G5".
+    The default is not set.
 
-#-Verbose
+#.PARAMETER -Verbose
    Enable verbose output.
 ```
 
