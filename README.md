@@ -13,8 +13,14 @@ So I came up with the idea to create a parameter based PowerShell script to ask 
 Use this command to run the script with the minimal required set of parameters.
 ```powershell
 # Minimal parameter setup
-.\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:" -Verbose
+.\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:"
 ```
+
+Currently the `mctcli.ps1` script only supports to download one oem enterprise driver pack. If you need to add more drivers, use the `add-drivers.ps1` script like this 
+```powershell
+.\add-driver.ps1 -Architecture amd64 -UsbDriveLetter "D:" -DriverManufacturer Dell -DriverModel "Latitude-7450"
+```
+It also supports `Dell`, `Lenovo` and `HP` as manufacturers.
 
 ### Parameter defenitions
 Check out the following section to learn what the parameters are used for.
@@ -49,11 +55,11 @@ Check out the following section to learn what the parameters are used for.
 
 #.PARAMETER -DriverModel
     The model of the drivers to download. This is optional and will be used to filter the drivers from the manufacturer.
-    For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X280" or (HP) "Z6 G5".
+    For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X390" or (HP) "Z6 G5".
     The default is not set.
 
 #.PARAMETER -Verbose
-   Enable verbose output.
+   Enable verbose output. I recommend using this parameter, as it exactly shows you what the script does and where it currently is.
 ```
 
 ## How it works?
