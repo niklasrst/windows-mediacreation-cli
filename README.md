@@ -1,4 +1,4 @@
-# 🪟 A CLI Media Creation Tool 🪟
+# 🪟 A Media Creation Tool CLI 🪟
 
 This repo contains my solution of a media creation tool to create Windows Installation media using PowerShell.
 
@@ -81,7 +81,6 @@ I wanted to use `NTFS` as the filesystem hosting the install files as it enables
 Before making your first contribution please see the following guidelines:
 1. [Semantic Commit Messages](https://gist.github.com/joshbuchea/6f47e86d2510bce28f8e7f42ae84c716)
 1. [Git Tutorials](https://www.youtube.com/playlist?list=PLu-nSsOS6FRIg52MWrd7C_qSnQp3ZoHwW)
-1. [Create a PR from a pushed branch](https://learn.microsoft.com/en-us/azure/devops/repos/git/pull-requests?view=azure-devops&tabs=browser#from-a-pushed-branch)
 
 ---
 
