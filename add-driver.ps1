@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
    A script to easily download and add oem driverpacks to install-media created by the mctcli tool.
+   DISM DRIVER INJECTION - BRANCH
 
 .DESCRIPTION
     This script downloads OEM driverpacks from Dell, Lenovo, or HP and adds them to a specified USB drive to create a bootable Windows installation media.

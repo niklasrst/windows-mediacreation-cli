@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
    A CLI to create Windows Installation media with different versions of Windows.
+   DISM DRIVER INJECTION - BRANCH
 
 .DESCRIPTION
     This script downloads the Windows ESD file from Microsoft and creates a bootable USB drive with the selected version of Windows.
