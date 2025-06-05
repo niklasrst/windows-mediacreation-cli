@@ -45,7 +45,7 @@
 Param(
     [Parameter(Mandatory = $True)]
     [ValidateSet("amd64", "arm64")]
-    [String]$Architecture = "x64",
+    [String]$Architecture = "amd64",
     [Parameter(Mandatory = $True)]
     [String]$UsbDriveLetter = "D:",
     [Parameter(Mandatory = $False)]
