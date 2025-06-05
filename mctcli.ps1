@@ -61,7 +61,7 @@
 Param(
     [Parameter(Mandatory = $True)]
     [ValidateSet("amd64", "arm64")]
-    [String]$Architecture = "x64",
+    [String]$Architecture = "amd64",
     [Parameter(Mandatory = $True)]
     [ValidateSet("24H2")]
     [String]$Build = "24H2",
@@ -95,6 +95,7 @@ if ([int]((Get-PSDrive -PSProvider 'FileSystem' | Where-Object { $_.Root -eq "$(
 $startTime = Get-Date -Format "HH:mm:ss"
 $IsoArchitecture = $null
 $IsoEdition = $null
+$mountInstallWim = "Y"
 $SupportedOsVersion = "Win11"
 $SupportedOsVersionShort = "W11"
 $SupportedOsVersionFull = "Windows 11"
@@ -277,18 +278,6 @@ catch {
     Write-Warning "Mounting setup.wim failed. Please check the file and try again."
 }
 
-Write-Verbose "Mounting install.wim file..."
-$mountInstallWim = "N" #(Read-Host -Prompt "Do you want to mount the install.wim file to inject files/drivers? (Y/N)")
-if ($mountInstallWim -eq "Y") {
-    try {
-        Mount-WindowsImage -ImagePath $installWimFile -Path $installWimTempDir -Index 1 | Out-Null
-    }
-    catch {
-        Write-Warning "Mounting setup.wim failed. Please check the file and try again."
-    }
-    Read-Host -Prompt "Please copy the files/drivers to $installWimTempDir\drivers and press Enter to continue"
-}
-
 # Create bootable USB drive
 try {
     Write-Verbose "Formatting USB drive $UsbDriveLetter..."
@@ -328,16 +317,8 @@ Move-Item -Path "$UsbDriveLetter\sources\_manifest" -Destination "$UsbDriveLette
 Write-Verbose "Unmount Setup WIM..."
 Dismount-WindowsImage -Path $setupWimTempDir -Discard | Out-Null
 
-if ($mountInstallWim -eq "Y") {
-    Write-Verbose "Unmount Install WIM..."
-    Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity | Out-Null
-}
-
 Write-Verbose "Copying Windows boot.wim to USB drive $UsbDriveLetter..."
 Copy-Item -Path "$bootWimFile" -Destination "$UsbDriveLetter\sources\boot.wim" -Recurse -Force | Out-Null
-
-Write-Verbose "Copying Windows install.wim to USB drive $UsbDriveLetter..."
-Copy-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Recurse -Force | Out-Null
 
 Write-Verbose "Copying EFI Files to $efipartition.DriveLetter..."
 if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -ne $true) {
@@ -366,9 +347,15 @@ if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -n
     #Copy-Item -Path "$UsbDriveLetter\bootmgr.efi" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
 }
 
-
-Write-Verbose "Adding driver directory..."
-New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
+Write-Verbose "Mounting install.wim file..."
+if ($mountInstallWim -eq "Y") {
+    try {
+        Mount-WindowsImage -ImagePath $installWimFile -Path $installWimTempDir -Index 1 | Out-Null
+    }
+    catch {
+        Write-Warning "Mounting setup.wim failed. Please check the file and try again."
+    }
+}
 
 switch ($DriverManufacturer) {
     "Dell" 
@@ -400,11 +387,9 @@ switch ($DriverManufacturer) {
                 Write-Verbose "Extracting Dell driver $dellDriverSetup to $driverpackTempDir ..."
                 Start-Process -FilePath "$scriptTempDir\$dellDriverSetup" -ArgumentList "/s /e=$driverpackTempDir" -Wait
 
-                Write-Verbose "Copying Dell driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
+                Write-Verbose "Injecting drivers to install.wim..."
                 $oemDriverPackDir = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($DriverModel).*" }).FullName
-                $oemDriverPackName = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($DriverModel).*" }).Name
-                $oemDriverMediaDir = $DriverManufacturer + "-" + $oemDriverPackName
-                Copy-Item -Path "$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture\" -Destination "$UsbDriveLetter\drivers\$oemDriverMediaDir" -Recurse -Force | Out-Null
+                Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture /recurse | Out-Null
             }   
         }
     }
@@ -435,9 +420,8 @@ switch ($DriverManufacturer) {
                 $driverModelPath = $lenovoDriverSetup -replace ".exe", ""
                 $extractDir = (Get-ChildItem -Path "$driverpackTempDir\Drivers\SCCM\$($driverModelPath)").FullName
 
-                Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-                New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
-                Copy-Item -Path "$extractDir\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
+                Write-Verbose "Injecting drivers to install.wim..."
+                Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
             }
         }
     }
@@ -466,15 +450,22 @@ switch ($DriverManufacturer) {
                 Write-Verbose "Extracting HP driver $hpDriverSetup to $driverpackTempDir ..."
                 Start-Process -FilePath "$scriptTempDir\$hpDriverSetup" -ArgumentList "/s /e /f $driverpackTempDir" -Wait
 
-                Write-Verbose "Copying HP driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-                New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
+                Write-Verbose "Injecting drivers to install.wim..."
                 $searchString = $DriverModel -replace " ", "*"
                 $extractDir = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -like "*$searchString*" } | Get-ChildItem).FullName
-                Copy-Item -Path "$($extractDir)\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
+                Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
             }
         }
     }
 }
+
+if ($mountInstallWim -eq "Y") {
+    Write-Verbose "Unmount Install WIM..."
+    Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity | Out-Null
+}
+
+Write-Verbose "Copying driver-injected-Windows install.wim to USB drive $UsbDriveLetter..."
+Copy-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Force | Out-Null
 
 # Add bootstick tools
 if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -ne $true) {
@@ -698,15 +689,6 @@ $autounattendXml= @"
                 <Organization></Organization>
             </UserData>
             <UseConfigurationSet>true</UseConfigurationSet>
-        </component>
-    </settings>
-    <settings pass="offlineServicing">
-        <component name="Microsoft-Windows-PnpCustomizationsNonWinPE" processorArchitecture="$Architecture" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <DriverPaths>
-                <PathAndCredentials wcm:action="add" wcm:keyValue="1">
-                    <Path>%configsetroot%\drivers</Path>
-                </PathAndCredentials>
-            </DriverPaths>
         </component>
     </settings>
 </unattend>
