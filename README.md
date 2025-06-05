@@ -7,7 +7,7 @@ This repo contains my solution of a media creation tool to create Windows Instal
 
 ## Introduction
 I´ve created this script as I wanted to automate the creation of usb-drives with Windows installation media.
-So I came up with the idea to create a parameter based PowerShell script to ask for the needed details and then fully automated create a usb-drive, containing the Windows installation media. It currently supports the last 4 versions of Windows 11.
+So I came up with the idea to create a parameter based PowerShell script to ask for the needed details and then fully automated create a usb-drive, containing the Windows installation media. It currently supports the latest versions of Windows 11.
 
 ## How to use it?
 Use this command to run the script with the minimal required set of parameters.
@@ -30,7 +30,7 @@ Check out the following section to learn what the parameters are used for.
     The default is x64.
 
 #.PARAMETER -Build
-    The build number of Windows to download. Valid values are "21H2", "22H2", "23H2", "24H2".
+    The build number of Windows to download. Valid values are "24H2".
     The default is the 24H2 build.
 
 #.PARAMETER -LanguageCode
