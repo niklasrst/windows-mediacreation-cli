@@ -10,7 +10,7 @@
     The default is x64.
 
 .PARAMETER -Build
-    The build number of Windows to download. Valid values are "21H2", "22H2", "23H2", "24H2".
+    The build number of Windows to download. Valid values are "24H2".
     The default is the 24H2 build.
 
 .PARAMETER -LanguageCode
@@ -63,7 +63,7 @@ Param(
     [ValidateSet("amd64", "arm64")]
     [String]$Architecture = "x64",
     [Parameter(Mandatory = $True)]
-    [ValidateSet("21H2", "22H2", "23H2", "24H2")]
+    [ValidateSet("24H2")]
     [String]$Build = "24H2",
     [Parameter(Mandatory = $True)]
     [String]$LanguageCode = "en-us",
