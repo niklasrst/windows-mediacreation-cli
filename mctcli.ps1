@@ -45,7 +45,7 @@
    Enable verbose output.
 
 .EXAMPLE
-    .\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "de-de" -RegionCode "de-de" -Edition Pro -UsbDriveLetter "E:" -DriverManufacturer Dell -DriverModel "Latitude-5440" -DriverInjectionType AUTOUNATTEND -Verbose
+    .\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "de-de" -RegionCode "de-de" -Edition Pro -UsbDriveLetter "D:" -DriverManufacturer Dell -DriverModel "Latitude-5440" -DriverInjectionType AUTOUNATTEND -Verbose
     This example downloads the Windows 11 x64 ESD file with build 24H2 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable media on the drive D:.
 
 .OUTPUTS
