@@ -22,6 +22,11 @@ Currently the `mctcli.ps1` script only supports to download one oem enterprise d
 ```
 It also supports `Dell`, `Lenovo` and `HP` as manufacturers.
 
+<span style="color:cornflowerblue;font-weight:bold">🛈  HINT</span><br/>
+    Because of a Bug/Known issue I´ve split the solution in 3 branches.
+    [main](https://github.com/niklasrst/windows-mediacreation-cli/tree/main) has a new switch `-DriverInjectionType` to control if you want to use the autounattend.xml file with the `drivers`-folder to apply driver files to the system, or use dism to inject the drivers in the `install.wim` file. Starting at Windows 11 24H2 it seems to be broken to use a `drivers`-folder to apply driver files to the system because of a switch in the setup process. So you can use this switch or switch to one of the branches [autounattend-driver-injection](https://github.com/niklasrst/windows-mediacreation-cli/tree/autounattend-driver-injection) or [dism-driver-injection](https://github.com/niklasrst/windows-mediacreation-cli/tree/dism-driver-injection) to use dedicated methods of driver injection. <br><br>
+    Hopefully Microsoft makes the way using autounattend.xml working again in the next Windows release but until then we can use the classic dism way.
+
 ### Parameter defenitions
 Check out the following section to learn what the parameters are used for.
 ``` powershell
@@ -58,23 +63,18 @@ Check out the following section to learn what the parameters are used for.
     For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X390" or (HP) "Z6 G5".
     The default is not set.
 
+#.PARAMETER -DriverInjectionType
+    The type of driver injection to use. Valid values are "AUTOUNATTEND" or "DISM".
+    The default is not set.
+
 #.PARAMETER -Verbose
    Enable verbose output. I recommend using this parameter, as it exactly shows you what the script does and where it currently is.
 ```
 
 ## How it works?
 
-<span style="color:cornflowerblue;font-weight:bold">🛈  HINT</span><br/>
-    I will update this part to tell you very granulary how the script works and what id does ;)
-
-1. Firstly the script is looking for the windows manifest file for [Windows11](https://go.microsoft.com/fwlink/?LinkId=2156292).
-
-2. Next is to filter the list, based on the parameters to get the version that you want to download.
-
-3. Once it figured the right download url from the manifest file it will start downloading the right `esd` file, which will be converted to `.wim` with the edition that you need.
-
-4. Lastly it is formatting the usb-drive and placing the installation media on it.
-I wanted to use `NTFS` as the filesystem hosting the install files as it enables larger `.wim` files and/or driverpacks. So I used the [Rufus Bootloader](https://github.com/pbatard/uefi-ntfs) which will added to a smaller `FAT32` partition on the usb-drive which will initiate the bootsequence and loads the install files from the `NTFS` partition, which both will be created from my script.
+Check out my blog post to learn how this solution works:
+[MCTCLI](https://niklasrast.io/blog/post-0088)
 
 ## 🤝 Contributing
 
