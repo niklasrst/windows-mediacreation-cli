@@ -303,7 +303,7 @@ switch ($DriverInjectionType) {
         Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity | Out-Null
 
         Write-Verbose "Copying Windows install.wim to USB drive $UsbDriveLetter..."
-        Copy-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Recurse -Force | Out-Null
+        Move-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Force | Out-Null
      }
     default {
         # No need to unmount install.wim for default which is AUTOUNATTEND

@@ -544,7 +544,7 @@ switch ($DriverInjectionType) {
 }
 
 Write-Verbose "Copying Windows install.wim to USB drive $UsbDriveLetter..."
-Copy-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Recurse -Force | Out-Null
+Move-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Force | Out-Null
 
 # Add bootstick tools
 if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -ne $true) {
