@@ -1031,7 +1031,6 @@ $autounattendXml | Set-Content -Path "$UsbDriveLetter\autounattend.xml" -Force
 
 # Cleanup
 Write-Verbose "Cleaning up temporary files"
-Remove-Item -Path $installWimFile -Force | Out-Null
 Remove-Item -Path $setupWimFile -Force | Out-Null
 Remove-Item -Path $bootWimFile -Force | Out-Null
 Remove-Item -Path $productsFile -Force | Out-Null
