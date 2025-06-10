@@ -384,9 +384,9 @@ if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -n
 switch ($DriverManufacturer) {
     "Dell" 
     {
-        if ((Test-NetConnection -ComputerName "dell.com" -Port 80).TcpTestSucceeded -ne $true) {
-            Write-Error "Could not connect to Dell which is needed for the drivers. Please ensure connectivity to dell.com and try again."
-        } else {
+        #if ((Test-NetConnection -ComputerName "dell.com" -Port 80).TcpTestSucceeded -ne $true) {
+        #    Write-Error "Could not connect to Dell which is needed for the drivers. Please ensure connectivity to dell.com and try again."
+        #} else {
             Write-Verbose "Searching Dell drivers for $DriverModel ..."
             if ($DriverModel -match "\s") {
                 Write-Verbose "Replacing spaces in DriverModel with dashes..."
@@ -433,13 +433,13 @@ switch ($DriverManufacturer) {
                 
                 
             }   
-        }
+        #}
     }
     "Lenovo" 
     {
-        if ((Test-NetConnection -ComputerName "lenovo.com" -Port 80).TcpTestSucceeded -ne $true) {
-            Write-Error "Could not connect to Lenovo which is needed for the drivers. Please ensure connectivity to lenovo.com and try again."
-        } else {
+        #if ((Test-NetConnection -ComputerName "lenovo.com" -Port 80).TcpTestSucceeded -ne $true) {
+        #    Write-Error "Could not connect to Lenovo which is needed for the drivers. Please ensure connectivity to lenovo.com and try again."
+        #} else {
             Write-Verbose "Searching Lenovo drivers for $DriverModel ..."
             Invoke-WebRequest -Uri "https://download.lenovo.com/cdrt/td/catalogv2.xml" -OutFile "$scriptTempDir\lenovodrivercatalog.xml"
             $driversXmlPath = "$scriptTempDir\lenovodrivercatalog.xml"
@@ -479,13 +479,13 @@ switch ($DriverManufacturer) {
                     }
                 }
             }
-        }
+        #}
     }
     "HP" 
     {
-        if ((Test-NetConnection -ComputerName "hp.com" -Port 80).TcpTestSucceeded -ne $true) {
-            Write-Error "Could not connect to HP which is needed for the drivers. Please ensure connectivity to hp.com and try again."
-        } else {
+        #if ((Test-NetConnection -ComputerName "hp.com" -Port 80).TcpTestSucceeded -ne $true) {
+        #    Write-Error "Could not connect to HP which is needed for the drivers. Please ensure connectivity to hp.com and try again."
+        #} else {
             Write-Verbose "Searching HP drivers for $DriverModel ..."
             Invoke-WebRequest -Uri "https://hpia.hpcloud.hp.com/downloads/driverpackcatalog/HPClientDriverPackCatalog.cab" -OutFile "$scriptTempDir\hpdrivercatalog.cab"
             Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\hpdrivercatalog.cab $scriptTempDir\hpdrivercatalog.xml" -Wait | Out-Null
@@ -526,7 +526,7 @@ switch ($DriverManufacturer) {
                     }
                 }  
             }
-        }
+        #}
     }
 }
 
