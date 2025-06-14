@@ -2,6 +2,8 @@
 
 This repo contains my solution of a media creation tool to create Windows Installation media using PowerShell.
 
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/niklasrst/windows-mediacreation-cli/total)
+
 <span style="color:cornflowerblue;font-weight:bold">🛈  HINT</span><br/>
     If you want to use the script, grab the latest release as the script version in the code is work-in-progress.
 
