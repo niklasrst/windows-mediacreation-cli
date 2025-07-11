@@ -110,6 +110,7 @@ $SupportedOsVersion = "Win11"
 $SupportedOsVersionShort = "W11"
 $SupportedOsVersionFull = "Windows 11"
 $BootloaderManufacturer = "Rufus"
+$dismDriverDetectionPath = "$UsbDriveLetter\sources\installwimdrivers.csv"
 $scriptTempDir = "$env:temp\mctcli"
 $driverpackTempDir = "$env:temp\mctcli\driverpack"
 $setupWimTempDir = "$env:temp\mctcli\setupwim"
@@ -353,6 +354,7 @@ Dismount-WindowsImage -Path $setupWimTempDir -Discard | Out-Null
 
 Write-Verbose "Copying Windows boot.wim to USB drive $UsbDriveLetter..."
 Copy-Item -Path "$bootWimFile" -Destination "$UsbDriveLetter\sources\boot.wim" -Recurse -Force | Out-Null
+New-Item -Path "$dismDriverDetectionPath" -ItemType File -Force | Out-Null
 
 Write-Verbose "Copying EFI Files to $efipartition.DriveLetter..."
 if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -ne $true) {
@@ -424,12 +426,7 @@ switch ($DriverManufacturer) {
                         Write-Verbose "Injecting drivers to install.wim..."
                         Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture /recurse | Out-Null
 
-                        $csvPath = "$UsbDriveLetter\sources\installwimdrivers.csv"
-                        $csvContent = [PSCustomObject]@{
-                            DriverManufacturer = $DriverManufacturer
-                            DriverModel        = $DriverModel
-                        }
-                        $csvContent | Export-Csv -Path $csvPath -Append -NoHeadersources\installwimdrivers.csv -Force
+                        "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
                     }
 
                     default {
@@ -480,12 +477,7 @@ switch ($DriverManufacturer) {
                         Write-Verbose "Injecting drivers to install.wim..."
                         Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
 
-                        $csvPath = "$UsbDriveLetter\sources\installwimdrivers.csv"
-                        $csvContent = [PSCustomObject]@{
-                            DriverManufacturer = $DriverManufacturer
-                            DriverModel        = $DriverModel
-                        }
-                        $csvContent | Export-Csv -Path $csvPath -Append -NoHeader -Force
+                        "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
                     }
                     default {
                         Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
@@ -534,12 +526,7 @@ switch ($DriverManufacturer) {
                         Write-Verbose "Injecting drivers to install.wim..."
                         Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
 
-                        $csvPath = "$UsbDriveLetter\sources\installwimdrivers.csv"
-                        $csvContent = [PSCustomObject]@{
-                            DriverManufacturer = $DriverManufacturer
-                            DriverModel        = $DriverModel
-                        }
-                        $csvContent | Export-Csv -Path $csvPath -Append -NoHeader -Force
+                        "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
                     }
                     default {
                         Write-Verbose "Copying HP driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
