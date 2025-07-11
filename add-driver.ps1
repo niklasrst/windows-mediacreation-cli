@@ -187,6 +187,13 @@ switch ($DriverManufacturer) {
                     "DISM" {
                         Write-Verbose "Injecting drivers to install.wim..."
                         Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture /recurse | Out-Null
+
+                        $csvPath = "$UsbDriveLetter\sources\installwimdrivers.csv"
+                        $csvContent = [PSCustomObject]@{
+                            DriverManufacturer = $DriverManufacturer
+                            DriverModel        = $DriverModel
+                        }
+                        $csvContent | Export-Csv -Path $csvPath -Append -NoHeader -Force
                     }
                     default {
                         $oemDriverPackName = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($DriverModel).*" }).Name
@@ -235,6 +242,13 @@ switch ($DriverManufacturer) {
                     "DISM" {
                         Write-Verbose "Injecting drivers to install.wim..."
                         Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
+
+                        $csvPath = "$UsbDriveLetter\sources\installwimdrivers.csv"
+                        $csvContent = [PSCustomObject]@{
+                            DriverManufacturer = $DriverManufacturer
+                            DriverModel        = $DriverModel
+                        }
+                        $csvContent | Export-Csv -Path $csvPath -Append -NoHeader -Force
                     }
                     default {
                         Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
@@ -282,6 +296,13 @@ switch ($DriverManufacturer) {
                     "DISM" {
                         Write-Verbose "Injecting drivers to install.wim..."
                         Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
+
+                        $csvPath = "$UsbDriveLetter\sources\installwimdrivers.csv"
+                        $csvContent = [PSCustomObject]@{
+                            DriverManufacturer = $DriverManufacturer
+                            DriverModel        = $DriverModel
+                        }
+                        $csvContent | Export-Csv -Path $csvPath -Append -NoHeader -Force
                     }
                     default {
                         Write-Verbose "Copying HP driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
