@@ -18,10 +18,20 @@ Use this command to run the script with the minimal required set of parameters.
 .\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:"
 ```
 
-Currently the `mctcli.ps1` script only supports to download one oem enterprise driver pack. If you need to add more drivers, use the `add-drivers.ps1` script like this 
+Currently the `mctcli.ps1` script only supports to download one oem enterprise driver pack. 
+
+### Single Driver adding
+If you need to add another driver, use the `add-drivers.ps1` script like this 
 ```powershell
 .\add-driver.ps1 -Architecture amd64 -UsbDriveLetter "D:" -DriverManufacturer Dell -DriverModel "Latitude-7450" -DriverInjectionType DISM
 ```
+
+### Multi Driver adding
+If you need to add more drivers, use the `add-multi-drivers.ps1` script like this 
+```powershell
+.\add-multi-driver.ps1 -Architecture amd64 -UsbDriveLetter "D:" -DriverManufacturer Dell -DriverModel "Latitude-5440","Latitude-5450" -DriverInjectionType DISM
+```
+
 It also supports `Dell`, `Lenovo` and `HP` as manufacturers.
 
 <span style="color:cornflowerblue;font-weight:bold">🛈  HINT</span><br/>
