@@ -56,6 +56,7 @@
 
 .LINK
     https://github.com/niklasrst/windows-mediacreation-cli
+    https://worproject.com/guides/mct-catalogs-api
 
 .AUTHOR
     Niklas Rast
