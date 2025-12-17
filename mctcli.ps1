@@ -5,13 +5,17 @@
 .DESCRIPTION
     This script downloads the Windows ESD file from Microsoft and creates a bootable USB drive with the selected version of Windows.
 
+.PARAMETER Windows
+    The Major Version of Windows to download. Valid values are 10 or 11.
+    The default is 11.
+
 .PARAMETER -Architecture
     The architecture of Windows to download. Valid values are amd64 or arm64.
     The default is x64.
 
 .PARAMETER -Build
-    The build number of Windows to download. Valid values are "24H2".
-    The default is the 24H2 build.
+    The build number of Windows to download. Valid values are "25H2", "24H2", "23H2" or "22H2".
+    The default is the 25H2 build.
 
 .PARAMETER -LanguageCode
     The language code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
@@ -65,11 +69,14 @@
 [CmdletBinding()]
 Param(
     [Parameter(Mandatory = $True)]
+    [ValidateSet("10", "11")]
+    [String]$Windows = "11",
+    [Parameter(Mandatory = $True)]
     [ValidateSet("amd64", "arm64")]
     [String]$Architecture = "x64",
     [Parameter(Mandatory = $True)]
-    [ValidateSet("24H2")]
-    [String]$Build = "24H2",
+    [ValidateSet("25H2", "24H2", "23H2", "22H2")]
+    [String]$Build = "25H2",
     [Parameter(Mandatory = $True)]
     [String]$LanguageCode = "en-us",
     [Parameter(Mandatory = $False)]
@@ -103,15 +110,17 @@ if ($DriverManufacturer -and $DriverModel -and -not $DriverInjectionType) {
     exit 1
 }
 
+$CurrentLocation = Get-Location
+
 # Variables
 $startTime = Get-Date -Format "HH:mm:ss"
 $IsoArchitecture = $null
 $IsoEdition = $null
-$SupportedOsVersion = "Win11"
-$SupportedOsVersionShort = "W11"
-$SupportedOsVersionFull = "Windows 11"
+$SupportedOsVersion = "Win" + $Windows
+$SupportedOsVersionShort = "W" + $Windows
+$SupportedOsVersionFull = "Windows " + $Windows
 $BootloaderManufacturer = "Rufus"
-$dismDriverDetectionPath = "$UsbDriveLetter\sources\installwimdrivers.csv"
+$dismDriverDetectionPath = "$UsbDriveLetter\installwimdrivers.csv"
 $scriptTempDir = "$env:temp\mctcli"
 $driverpackTempDir = "$env:temp\mctcli\driverpack"
 $setupWimTempDir = "$env:temp\mctcli\setupwim"
@@ -171,10 +180,10 @@ switch ($Edition){
 Write-Verbose "Pulling $Edition from $IsoEdition..."
 
 switch ($Build){
-    "21H2" { $BuildVer = "22000" }
     "22H2" { $BuildVer = "22621" }
     "23H2" { $BuildVer = "22631" }
     "24H2" { $BuildVer = "26100" }
+    "25H2" { $BuildVer = "26200" }
 }
 Write-Verbose "Build version converted to $BuildVer..."
 
@@ -194,7 +203,33 @@ if ((Test-NetConnection -ComputerName "microsoft.com" -Port 80).TcpTestSucceeded
     Write-Error "Could not connect to Microsoft which is needed for the installation media. Please ensure connectivity to Microsoft.com and try again."
     exit 1
 }
-$Url = "https://go.microsoft.com/fwlink/?LinkId=2156292" 
+
+$Url = $null
+switch ($Windows) {
+    "10" { 
+        switch ($Build) {
+            "25H2" { $Url = $null }
+            "24H2" { $Url = $null }
+            "23H2" { $Url = $null }
+            "22H2" { $Url = "https://download.microsoft.com/download/7/9/c/79cbc22a-0eea-4a0d-89c0-054a1b3aa8e0/products.cab" }
+        }
+    }
+    "11" { 
+        switch ($Build) {
+            "25H2" { $Url = "https://github.com/niklasrst/windows-mediacreation-cli/raw/refs/heads/main/cabs/windows11-25h2-products.cab" }
+            "24H2" { $Url = "https://download.microsoft.com/download/8e0c23e7-ddc2-45c4-b7e1-85a808b408ee/Products-Win11-24H2-6B.cab" }
+            "23H2" { $Url = "https://download.microsoft.com/download/6/2/b/62b47bc5-1b28-4bfa-9422-e7a098d326d4/products_win11_20231208.cab" }
+            "22H2" { $Url = "https://download.microsoft.com/download/e/8/6/e86b4c6f-4ae8-40df-b983-3de63ea9502d/products_win11_202311109.cab" }
+        }
+     }
+    Default {}
+}
+
+if ($null -eq $Url) {
+    Write-Error "No download url found for selected Windows edition. Try again with a valid Windows version."
+    exit 1
+}
+
 Write-Verbose "Downloading Manifest from $($Url) to $scriptTempDir..."
 Invoke-WebRequest -Uri $Url -OutFile "$scriptTempDir\manifest.cab"
 Write-Verbose "Extracting Manifest to $scriptTempDir\manifest_products.xml..."
@@ -436,8 +471,6 @@ switch ($DriverManufacturer) {
                         Copy-Item -Path "$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture\" -Destination "$UsbDriveLetter\drivers\$oemDriverMediaDir" -Recurse -Force | Out-Null
                     }
                 }
-                
-                
             }   
         #}
     }
@@ -1063,4 +1096,5 @@ if (Test-Path -Path "$scriptTempDir\delldrivercatalog.xml") {
     Remove-Item -Path "$scriptTempDir\$dellDriverSetup" -Force | Out-Null
 }
 
+Set-Location $CurrentLocation
 Write-Host ("Finished Windows Media Creation CLI in: {0:hh\:mm\:ss}" -f (New-TimeSpan -Start $startTime -End (Get-Date))) -ForegroundColor Green
