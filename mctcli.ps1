@@ -5,7 +5,7 @@
 .DESCRIPTION
     This script downloads the Windows ESD file from Microsoft and creates a bootable USB drive with the selected version of Windows.
 
-.PARAMETER Windows
+.PARAMETER -Windows
     The Major Version of Windows to download. Valid values are 10 or 11.
     The default is 11.
 
