@@ -75,6 +75,8 @@ if ($DriverManufacturer -is [array] -and $DriverManufacturer.Count -gt 1) {
     exit 1
 }
 
+$CurrentLocation = Get-Location
+
 # Variables
 $startTime = Get-Date -Format "HH:mm:ss"
 $IsoArchitecture = $null
@@ -356,4 +358,5 @@ if (Test-Path -Path "$scriptTempDir\hpdrivercatalog.xml") {
     Remove-Item -Path "$scriptTempDir\$hpDriverSetup" -Force | Out-Null
 }
 
+Set-Location $CurrentLocation
 Write-Host ("Finished adding drivers in: {0:hh\:mm\:ss}" -f (New-TimeSpan -Start $startTime -End (Get-Date))) -ForegroundColor Green
