@@ -120,7 +120,6 @@ $SupportedOsVersion = "Win" + $Windows
 $SupportedOsVersionShort = "W" + $Windows
 $SupportedOsVersionFull = "Windows " + $Windows
 $BootloaderManufacturer = "Rufus"
-$dismDriverDetectionPath = "$UsbDriveLetter\installwimdrivers.csv"
 $scriptTempDir = "$env:temp\mctcli"
 $driverpackTempDir = "$env:temp\mctcli\driverpack"
 $setupWimTempDir = "$env:temp\mctcli\setupwim"
@@ -390,6 +389,7 @@ Dismount-WindowsImage -Path $setupWimTempDir -Discard | Out-Null
 
 Write-Verbose "Copying Windows boot.wim to USB drive $UsbDriveLetter..."
 Copy-Item -Path "$bootWimFile" -Destination "$UsbDriveLetter\sources\boot.wim" -Recurse -Force | Out-Null
+$dismDriverDetectionPath = "$UsbDriveLetter\installwimdrivers.csv"
 New-Item -Path "$dismDriverDetectionPath" -ItemType File -Force | Out-Null
 
 Write-Verbose "Copying EFI Files to $efipartition.DriveLetter..."
