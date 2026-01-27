@@ -120,11 +120,11 @@ $SupportedOsVersion = "Win" + $Windows
 $SupportedOsVersionShort = "W" + $Windows
 $SupportedOsVersionFull = "Windows " + $Windows
 $BootloaderManufacturer = "Rufus"
-$scriptTempDir = "$env:temp\mctcli"
-$driverpackTempDir = "$env:temp\mctcli\driverpack"
-$setupWimTempDir = "$env:temp\mctcli\setupwim"
-$bootWimTempDir = "$env:temp\mctcli\bootwim"
-$installWimTempDir = "$env:temp\mctcli\installwim"
+$scriptTempDir = "C:\mctcli"
+$driverpackTempDir = "C:\mctcli\driverpack"
+$setupWimTempDir = "C:\mctcli\setupwim"
+$bootWimTempDir = "C:\mctcli\bootwim"
+$installWimTempDir = "C:\mctcli\installwim"
 if (-not (Test-Path -Path $scriptTempDir)) {
     New-Item -ItemType Directory -Path $scriptTempDir | Out-Null
     Write-Verbose "Created temporary directory $scriptTempDir..."
