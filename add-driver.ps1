@@ -77,10 +77,10 @@ $SupportedOsVersion = "Win11"
 $SupportedOsVersionShort = "W11"
 $SupportedOsVersionFull = "Windows 11"
 $dismDriverDetectionPath = "$UsbDriveLetter\installwimdrivers.csv"
-$scriptTempDir = "$env:temp\mctcli"
+$scriptTempDir = "C:\mctcli"
 $installWimFile = "$scriptTempDir\install.wim"
-$installWimTempDir = "$env:temp\mctcli\installwim"
-$driverpackTempDir = "$env:temp\mctcli\driverpack"
+$installWimTempDir = "C:\mctcli\installwim"
+$driverpackTempDir = "C:\mctcli\driverpack"
 if (-not (Test-Path -Path $scriptTempDir)) {
     New-Item -ItemType Directory -Path $scriptTempDir | Out-Null
     Write-Verbose "Created temporary directory $scriptTempDir..."
