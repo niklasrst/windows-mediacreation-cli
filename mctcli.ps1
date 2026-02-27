@@ -597,6 +597,7 @@ if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -n
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/andrew-s-taylor/WindowsAutopilotInfo/refs/heads/main/Community%20Version/Get-AutopilotDiagnosticsCommunity.ps1" -OutFile "$UsbDriveLetter\Get-AutopilotDiagnosticsCommunity.ps1"
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/andrew-s-taylor/WindowsAutopilotInfo/refs/heads/main/Community%20Version/get-windowsautopilotinfocommunity.ps1" -OutFile "$UsbDriveLetter\Get-WindowsAutopilotInfoCommunity.ps1"
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/refs/heads/main/Get-IntuneManagementExtensionDiagnostics.ps1" -OutFile "$UsbDriveLetter\Get-IntuneManagementExtensionDiagnostics.ps1"
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/niklasrst/windows-mediacreation-cli/refs/heads/main/setup-localuser.bat" -OutFile "$UsbDriveLetter\Create-LocalWindowsAccount.bat"
     Invoke-WebRequest -Uri "https://download.microsoft.com/download/52de3524-4108-47e5-acda-5cc820107759/Test-IntuneAFDConnectivity.ps1" -OutFile "$UsbDriveLetter\Test-IntuneAFDConnectivity.ps1"
     Invoke-WebRequest -Uri "https://github.com/niklasrst/niklasrst/raw/refs/heads/main/CMTrace.exe" -OutFile "$UsbDriveLetter\CMTrace.exe"
 }
