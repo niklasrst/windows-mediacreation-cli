@@ -1,0 +1,1 @@
+.\oscdimg.exe -m -o -u2 -udfver102 -bootdata:2#p0,e,bC:\Data\ISO\w11_26h2_de_x64_auto\boot\etfsboot.com#pEF,e,bC:\Data\ISO\w11_26h2_de_x64_auto\efi\microsoft\boot\efisys.bin C:\Data\ISO\w11_26h2_de_x64_auto C:\Data\ISO\w11_26h2_de_x64_auto.iso

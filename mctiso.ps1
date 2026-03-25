@@ -1,0 +1,728 @@
+<#
+.SYNOPSIS
+   A CLI to create Windows Installation ISO with different versions of Windows and driver packs.
+
+.DESCRIPTION
+    This script downloads the Windows ESD file from Microsoft and creates a bootable ISO with the selected version of Windows.
+
+.PARAMETER -Windows
+    The Major Version of Windows to download. Valid values are 10 or 11.
+    The default is 11.
+
+.PARAMETER -Architecture
+    The architecture of Windows to download. Valid values are amd64 or arm64.
+    The default is x64.
+
+.PARAMETER -Build
+    The build number of Windows to download. Valid values are "25H2", "24H2", "23H2" or "22H2".
+    The default is the 25H2 build.
+
+.PARAMETER -LanguageCode
+    The language code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
+    The default is en-us.
+
+.PARAMETER -RegionCode
+    The regional code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
+    The default is en-us and will be matched to LanuageCode. if not set.
+
+.PARAMETER -Edition
+        The edition of Windows to download. Valid values are "Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N"
+        The default is Pro.
+
+.PARAMETER -DriverManufacturer
+    The manufacturer of the drivers to download. Valid values are "Dell", "Lenovo", "HP".
+    The default is not set.
+
+.PARAMETER -DriverModel
+    The model of the drivers to download. This is optional and will be used to filter the drivers from the manufacturer.
+    For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X390" or (HP) "Z6 G5".
+
+
+.PARAMETER -Verbose
+   Enable verbose output.
+
+.EXAMPLE
+    .\mctiso.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "de-de" -RegionCode "de-de" -Edition Pro -DriverManufacturer Dell -DriverModel "Latitude-5440" -Verbose
+    This example downloads the Windows 11 x64 ESD file with build 24H2 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable ISO on the drive D:.
+
+.OUTPUTS
+    ---
+
+.NOTES
+    Use this script to create a Windows Installation ISO from PowerShell.
+
+.LINK
+    https://github.com/niklasrst/windows-mediacreation-cli
+
+.AUTHOR
+    Niklas Rast
+#>
+
+[CmdletBinding()]
+Param(
+    [Parameter(Mandatory = $True)]
+    [ValidateSet("10", "11")]
+    [String]$Windows = "11",
+    [Parameter(Mandatory = $True)]
+    [ValidateSet("amd64", "arm64")]
+    [String]$Architecture = "x64",
+    [Parameter(Mandatory = $True)]
+    [ValidateSet("25H2", "24H2", "23H2", "22H2")]
+    [String]$Build = "25H2",
+    [Parameter(Mandatory = $True)]
+    [String]$LanguageCode = "en-us",
+    [Parameter(Mandatory = $False)]
+    [String]$RegionCode,
+    [Parameter(Mandatory = $True)]
+    [ValidateSet("Home", "Pro", "Pro N", "Enterprise", "Enterprise N", "Education", "Education N")]
+    [String]$Edition = "Pro",
+    [Parameter(Mandatory = $False)]
+    [ValidateSet("Dell", "Lenovo", "HP")]
+    [String]$DriverManufacturer,
+    [Parameter(Mandatory = $False)]
+    [String]$DriverModel
+)
+
+#Requires -RunAsAdministrator
+if ([int]((Get-PSDrive -PSProvider 'FileSystem' | Where-Object { $_.Root -eq "$($env:SystemDrive)\" }).Free / 1GB) -lt 10) {
+    Write-Error "No enough disk space. Please ensure that at least 10GB of disk space are available and try again."
+    exit 1
+}
+
+$CurrentLocation = Get-Location
+
+# Variables
+$startTime = Get-Date -Format "HH:mm:ss"
+$IsoArchitecture = $null
+$IsoEdition = $null
+$SupportedOsVersion = "Win" + $Windows
+$SupportedOsVersionShort = "W" + $Windows
+$SupportedOsVersionFull = "Windows " + $Windows
+$BootloaderManufacturer = "Rufus"
+$scriptTempDir = "C:\mctcli"
+$driverpackTempDir = "C:\mctcli\driverpack"
+$setupWimTempDir = "C:\mctcli\setupwim"
+$bootWimTempDir = "C:\mctcli\bootwim"
+$installWimTempDir = "C:\mctcli\installwim"
+$tempIsoDir = "C:\mctcli\iso"
+if (-not (Test-Path -Path $scriptTempDir)) {
+    New-Item -ItemType Directory -Path $scriptTempDir | Out-Null
+    Write-Verbose "Created temporary directory $scriptTempDir..."
+}
+if (-not (Test-Path -Path $driverpackTempDir)) {
+    New-Item -ItemType Directory -Path $driverpackTempDir | Out-Null
+    Write-Verbose "Created temporary directory $driverpackTempDir..."
+}
+if (-not (Test-Path -Path $setupWimTempDir)) {
+    New-Item -ItemType Directory -Path $setupWimTempDir | Out-Null
+    Write-Verbose "Created temporary directory $setupWimTempDir..."
+}
+if (-not (Test-Path -Path $bootWimTempDir)) {
+    New-Item -ItemType Directory -Path $bootWimTempDir | Out-Null
+    Write-Verbose "Created temporary directory $bootWimTempDir..."
+}
+if (-not (Test-Path -Path $installWimTempDir)) {
+    New-Item -ItemType Directory -Path $installWimTempDir | Out-Null
+    Write-Verbose "Created temporary directory $installWimTempDir..."
+}
+if (-not (Test-Path -Path $tempIsoDir)) {
+    New-Item -ItemType Directory -Path $tempIsoDir | Out-Null
+    Write-Verbose "Created temporary directory $tempIsoDir..."
+}
+Set-Location $scriptTempDir
+
+Write-Verbose "Parameters"
+Write-Verbose "Architecture: $Architecture"
+Write-Verbose "Operating System Version Support: $SupportedOsVersionFull ($SupportedOsVersion / $SupportedOsVersionShort)"
+Write-Verbose "Build: $Build"
+Write-Verbose "LanguageCode: $LanguageCode"
+Write-Verbose "RegionCode: $RegionCode"
+Write-Verbose "Edition: $Edition"
+Write-Verbose "DriverManufacturer: $DriverManufacturer"
+Write-Verbose "DriverModel: $DriverModel"
+Write-Verbose "Working Directory: $scriptTempDir"
+Write-Verbose "------------------------------------------------------"
+Write-Verbose "Starting Windows Media Creation CLI at $startTime"
+
+switch ($Edition){
+    "Home" { $IsoEdition = "CLIENTCONSUMER_RET" }
+    "Pro" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "ProN" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "Enterprise" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "EnterpriseN" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "Education" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "EducationN" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+}
+
+Write-Verbose "Pulling $Edition from $IsoEdition..."
+
+switch ($Build){
+    "22H2" { $BuildVer = "22621" }
+    "23H2" { $BuildVer = "22631" }
+    "24H2" { $BuildVer = "26100" }
+    "25H2" { $BuildVer = "26200" }
+}
+Write-Verbose "Build version converted to $BuildVer..."
+
+switch ($Architecture) {
+    "amd64" { $IsoArchitecture = "x64" }
+    "arm64" { $IsoArchitecture = "A64" }
+}
+Write-Verbose "Architecture converted to $IsoArchitecture..."
+
+if (-not $RegionCode -or [string]::IsNullOrWhiteSpace($RegionCode)) {
+    $RegionCode = $LanguageCode
+    Write-Verbose "RegionCode not specified. Defaulting RegionCode to LanguageCode: $RegionCode ..."
+}
+
+# Download Manifest
+if ((Test-NetConnection -ComputerName "microsoft.com" -Port 80).TcpTestSucceeded -ne $true) {
+    Write-Error "Could not connect to Microsoft which is needed for the installation media. Please ensure connectivity to Microsoft.com and try again."
+    exit 1
+}
+
+$Url = $null
+switch ($Windows) {
+    "10" { 
+        switch ($Build) {
+            "25H2" { $Url = $null }
+            "24H2" { $Url = $null }
+            "23H2" { $Url = $null }
+            "22H2" { $Url = "https://download.microsoft.com/download/7/9/c/79cbc22a-0eea-4a0d-89c0-054a1b3aa8e0/products.cab" }
+        }
+    }
+    "11" { 
+        switch ($Build) {
+            "25H2" { $Url = "https://github.com/niklasrst/windows-mediacreation-cli/raw/refs/heads/main/cabs/windows11-25h2-products.cab" }
+            "24H2" { $Url = "https://download.microsoft.com/download/8e0c23e7-ddc2-45c4-b7e1-85a808b408ee/Products-Win11-24H2-6B.cab" }
+            "23H2" { $Url = "https://download.microsoft.com/download/6/2/b/62b47bc5-1b28-4bfa-9422-e7a098d326d4/products_win11_20231208.cab" }
+            "22H2" { $Url = "https://download.microsoft.com/download/e/8/6/e86b4c6f-4ae8-40df-b983-3de63ea9502d/products_win11_202311109.cab" }
+        }
+     }
+    Default {}
+}
+
+if ($null -eq $Url) {
+    Write-Error "No download url found for selected Windows edition. Try again with a valid Windows version."
+    exit 1
+}
+
+Write-Verbose "Downloading Manifest from $($Url) to $scriptTempDir..."
+Invoke-WebRequest -Uri $Url -OutFile "$scriptTempDir\manifest.cab"
+Write-Verbose "Extracting Manifest to $scriptTempDir\manifest_products.xml..."
+Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\manifest.cab $scriptTempDir\manifest_products.xml" -Wait | Out-Null
+Write-Verbose "Removing temporary file $scriptTempDir\manifest.cab..."
+Remove-Item -Path "$scriptTempDir\manifest.cab" -Force | Out-Null
+
+# Build Download-URL for ESD file
+$productsFile = "$scriptTempDir\manifest_products.xml"
+[xml]$productsXml = Get-Content -Path $productsFile
+Write-Verbose "Parsing XML file $productsFile..."
+
+$esdUrl = ($productsXml.MCT.Catalogs.Catalog.FirstChild.Files.File.FilePath | Where-Object { $_ -match ".*http.*$BuildVer.*$IsoEdition.*$IsoArchitecture.*$LanguageCode.esd" } | Select-Object -First 1)
+Write-Verbose "Found ESD URL: $esdUrl"
+
+$esdVersion = ($Edition + "-" + $LanguageCode + "-" + $Build + "-" + $Architecture).Replace(" ","")
+$installEsdFile = "$scriptTempDir\$($esdVersion).esd"
+$bootWimFile = "$scriptTempDir\boot.wim"
+$setupWimFile = "$scriptTempDir\setup.wim"
+$installWimFile = "$scriptTempDir\install.wim"
+if (Test-Path -Path $installEsdFile) {
+    Write-Verbose "ESD file already exists. Skipping download..."
+} else {
+    try {
+        Write-Verbose "Downloading ESD file from $esdUrl to $scriptTempDir..."
+        Invoke-WebRequest -Uri $esdUrl -OutFile $installEsdFile
+    }
+    catch {
+        Write-Error "Failed to download ESD file. Please check the connectivity and try again."
+        exit 1
+    }
+}
+
+# Extract setup.wim
+Write-Verbose "Extracting setup from ESD to WIM format..."
+if (-not (Test-Path -Path $setupWimFile)) {
+    $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installEsdFile | Out-String
+    $setupIndex = ($installWimInfo -split "`n" | ForEach-Object {
+        if ($_ -match "Name\s*:\s*Windows Setup Media") {
+            $previousLine = $previousLine -replace "Index\s*:\s*", ""
+            return $previousLine
+        }
+        $previousLine = $_
+    }) | Select-Object -First 1
+
+    $setupIndex = [int32]$setupIndex
+
+    Write-Verbose "Found setup.wim in index: $setupIndex. Exporting the image to WIM format..."
+    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$setupWimFile /Compress:max /CheckIntegrity | Out-Null
+} 
+
+# Extract boot.wim
+Write-Verbose "Extracting boot from ESD to WIM format..."
+if (-not (Test-Path -Path $bootWimFile)) {
+    $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installEsdFile | Out-String
+    $bootIndex = ($installWimInfo -split "`n" | ForEach-Object {
+        if ($_ -match "Name\s*:\s*Microsoft Windows Setup (.*$Architecture)") {
+            $previousLine = $previousLine -replace "Index\s*:\s*", ""
+            return $previousLine
+        }
+        $previousLine = $_
+    }) | Select-Object -First 1
+
+    $bootIndex = [int32]$bootIndex
+
+    Write-Verbose "Found boot.wim in index: $bootIndex. Exporting the image to WIM format..."
+    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$bootIndex /DestinationImageFile:$bootWimFile /Compress:max /CheckIntegrity | Out-Null
+}
+
+# Extract install.wim
+Write-Verbose "Extracting install from ESD to WIM format..."
+if (-not (Test-Path -Path $installWimFile)) {
+    $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installEsdFile | Out-String
+    $editionIndex = ($installWimInfo -split "`n" | ForEach-Object {
+        if ($_ -match "Name\s*:\s*Windows.*$Edition") {
+            $previousLine = $previousLine -replace "Index\s*:\s*", ""
+            return $previousLine
+        }
+        $previousLine = $_
+    }) | Select-Object -First 1
+
+    $editionIndex = [int32]$editionIndex
+
+    Write-Verbose "Found install.wim for $Edition in index: $editionIndex. Exporting the image to WIM format..."
+    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$editionIndex /DestinationImageFile:$installWimFile /Compress:max /CheckIntegrity | Out-Null
+} 
+
+# Mount wim file(s)
+Write-Verbose "Mounting setup.wim file..."
+try {
+    Mount-WindowsImage -ImagePath $setupWimFile -Path "$setupWimTempDir" -Index 1 | Out-Null
+}
+catch {
+    Write-Warning "Mounting setup.wim failed. Please check the file and try again."
+}
+
+# Mount install.wim file if needed
+Write-Verbose "Mounting install.wim file..."
+try {
+    Mount-WindowsImage -ImagePath $installWimFile -Path $installWimTempDir -Index 1 | Out-Null
+}
+catch {
+    Write-Warning "Mounting install.wim failed. Please check the file and try again."
+} 
+
+# Adding Windows Setup files
+Write-Verbose "Copying Windows Setup files to USB drive $tempIsoDir..."
+Copy-Item -Path "$setupWimTempDir\*" -Destination "$tempIsoDir" -Recurse -Force | Out-Null
+Move-Item -Path "$tempIsoDir\sources\_manifest" -Destination "$tempIsoDir\" -Force | Out-Null
+
+Write-Verbose "Unmount Setup WIM..."
+Dismount-WindowsImage -Path $setupWimTempDir -Discard | Out-Null
+
+Write-Verbose "Copying Windows boot.wim to USB drive $tempIsoDir..."
+Copy-Item -Path "$bootWimFile" -Destination "$tempIsoDir\sources\boot.wim" -Recurse -Force | Out-Null
+$dismDriverDetectionPath = "$tempIsoDir\installwimdrivers.csv"
+New-Item -Path "$dismDriverDetectionPath" -ItemType File -Force | Out-Null
+
+Write-Verbose "Copying EFI Files to $efipartition.DriveLetter..."
+if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -ne $true) {
+    Write-Error "Could not connect to Github which is needed for the UEFI drivers. Please ensure connectivity to Github.com and try again."
+} else {
+    Copy-Item "$tempIsoDir\boot" "$tempIsoDir\" -Recurse
+    #Copy-Item "$tempIsoDir\efi" "$tempIsoDir\" -Recurse
+    New-Item -Path "$tempIsoDir" -Name "efi" -ItemType Directory -Force | Out-Null
+    New-Item -Path "$tempIsoDir\efi" -Name "Boot" -ItemType Directory -Force | Out-Null
+    New-Item -Path "$tempIsoDir\efi" -Name "$BootloaderManufacturer" -ItemType Directory -Force | Out-Null
+    #https://github.com/pbatard/uefi-ntfs/releases/tag/v2.5
+    Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootaa64.efi" -OutFile "$tempIsoDir\efi\Boot\bootaa64.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootarm.efi" -OutFile "$tempIsoDir\efi\Boot\bootarm.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootia32.efi" -OutFile "$tempIsoDir\efi\Boot\bootia32.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/uefi-ntfs/releases/download/v2.5/bootx64.efi" -OutFile "$tempIsoDir\efi\Boot\bootx64.efi"
+    #https://github.com/pbatard/ntfs-3g/releases
+    Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_aa64.efi" -OutFile "$tempIsoDir\efi\$BootloaderManufacturer\ntfs_aa64.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_arm.efi" -OutFile "$tempIsoDir\efi\$BootloaderManufacturer\ntfs_arm.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_ia32.efi" -OutFile "$tempIsoDir\efi\$BootloaderManufacturer\ntfs_ia32.efi"
+    Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_x64.efi" -OutFile "$tempIsoDir\efi\$BootloaderManufacturer\ntfs_x64.efi"
+    #Copy-Item "$tempIsoDir\bootmgr*" "$tempIsoDir\" -Recurse -ErrorAction SilentlyContinue
+    #Copy-Item "$tempIsoDir\setup.exe" "$tempIsoDir\" -Recurse
+    #Copy-Item "$tempIsoDir\sources\boot.wim" "$tempIsoDir\sources\boot.wim" -Force -Recurse
+    #Copy-Item -Path "$tempIsoDir\efi\*" -Destination "$($efipartition.DriveLetter):" -Recurse -Force | Out-Null
+    #Copy-Item -Path "$tempIsoDir\bootmgr" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
+    #Copy-Item -Path "$tempIsoDir\bootmgr.efi" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
+}
+
+switch ($DriverManufacturer) {
+    "Dell" 
+    {
+        #if ((Test-NetConnection -ComputerName "dell.com" -Port 80).TcpTestSucceeded -ne $true) {
+        #    Write-Error "Could not connect to Dell which is needed for the drivers. Please ensure connectivity to dell.com and try again."
+        #} else {
+            Write-Verbose "Searching Dell drivers for $DriverModel ..."
+            if ($DriverModel -match "\s") {
+                Write-Verbose "Replacing spaces in DriverModel with dashes..."
+                $DriverModel = $DriverModel -replace '\s', '-'
+            }
+            Invoke-WebRequest -Uri "https://downloads.dell.com/catalog/driverpackcatalog.cab" -OutFile "$scriptTempDir\delldrivercatalog.cab"
+            Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\delldrivercatalog.cab $scriptTempDir\delldrivercatalog.xml" -Wait | Out-Null
+            Remove-Item -Path "$scriptTempDir\delldrivercatalog.cab" -Force | Out-Null
+            $driversXmlPath = "$scriptTempDir\delldrivercatalog.xml"
+            [xml]$driversXml = Get-Content -Path $driversXmlPath
+
+            $dellDriverPath = $driversXml.DriverPackManifest.DriverPackage.Path | Where-Object { $_ -match "$DriverModel.*$SupportedOsVersion" } | Select-Object -First 1
+            $dellDriverUrl = $baseDownloadUrl + $dellDriverPath
+            $dellDriverSetup = $dellDriverPath -replace ".*($($DriverModel).*)", '$1'
+
+            if ($null -eq $dellDriverUrl) {
+                Write-Error "No Dell driver found for $DriverModel. Skipping driver download."
+            } else {
+                Write-Verbose "Found Dell driver URL for $DriverModel $dellDriverUrl"
+                Invoke-WebRequest -Uri "https://downloads.dell.com/$($dellDriverUrl)" -OutFile "$scriptTempDir\$dellDriverSetup"
+            
+                Write-Verbose "Extracting Dell driver $dellDriverSetup to $driverpackTempDir ..."
+                Start-Process -FilePath "$scriptTempDir\$dellDriverSetup" -ArgumentList "/s /e=$driverpackTempDir" -Wait
+
+                $oemDriverPackDir = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($DriverModel).*" }).FullName
+                
+                Write-Verbose "Injecting drivers to install.wim..."
+                Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture /recurse | Out-Null
+                "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force   
+            }   
+        #}
+    }
+    "Lenovo" 
+    {
+        #if ((Test-NetConnection -ComputerName "lenovo.com" -Port 80).TcpTestSucceeded -ne $true) {
+        #    Write-Error "Could not connect to Lenovo which is needed for the drivers. Please ensure connectivity to lenovo.com and try again."
+        #} else {
+            Write-Verbose "Searching Lenovo drivers for $DriverModel ..."
+            Invoke-WebRequest -Uri "https://download.lenovo.com/cdrt/td/catalogv2.xml" -OutFile "$scriptTempDir\lenovodrivercatalog.xml"
+            $driversXmlPath = "$scriptTempDir\lenovodrivercatalog.xml"
+            [xml]$driversXml = Get-Content -Path $driversXmlPath
+
+            $lenovoDriverPath = $driversXml.ModelList.Model | Where-Object { $_.name -match $DriverModel }
+            $lenovoDriverPathNode = $lenovoDriverPath.SCCM | Where-Object { $_.os -eq "$SupportedOsVersion" } | Select-Object -Last 1
+            $lenovoDriverUrl = $lenovoDriverPathNode.'#text'
+            $lenovoDriverSetup = $lenovoDriverUrl -replace '.*/', ''
+
+            if ($null -eq $lenovoDriverUrl) {
+                Write-Error "No Lenovo driver found for $DriverModel. Skipping driver download."
+            } else {
+                Write-Verbose "Found Lenovo driver URL for $DriverModel $lenovoDriverUrl"
+                Invoke-WebRequest -Uri $lenovoDriverUrl -OutFile "$scriptTempDir\$lenovoDriverSetup"
+
+                Write-Verbose "Extracting Lenovo driver $lenovoDriverSetup to $driverpackTempDir ..."
+                Start-Process -FilePath "$scriptTempDir\$lenovoDriverSetup" -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-" -Wait
+                Move-Item -Path "C:\Drivers" -Destination $driverpackTempDir -Force | Out-Null
+                $driverModelPath = $lenovoDriverSetup -replace ".exe", ""
+                $extractDir = (Get-ChildItem -Path "$driverpackTempDir\Drivers\SCCM\$($driverModelPath)").FullName
+
+                Write-Verbose "Injecting drivers to install.wim..."
+                Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
+                "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
+            }
+        #}
+    }
+    "HP" 
+    {
+        #if ((Test-NetConnection -ComputerName "hp.com" -Port 80).TcpTestSucceeded -ne $true) {
+        #    Write-Error "Could not connect to HP which is needed for the drivers. Please ensure connectivity to hp.com and try again."
+        #} else {
+            Write-Verbose "Searching HP drivers for $DriverModel ..."
+            Invoke-WebRequest -Uri "https://hpia.hpcloud.hp.com/downloads/driverpackcatalog/HPClientDriverPackCatalog.cab" -OutFile "$scriptTempDir\hpdrivercatalog.cab"
+            Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\hpdrivercatalog.cab $scriptTempDir\hpdrivercatalog.xml" -Wait | Out-Null
+            Remove-Item -Path "$scriptTempDir\hpdrivercatalog.cab" -Force | Out-Null
+            $driversXmlPath = "$scriptTempDir\hpdrivercatalog.xml"
+            [xml]$driversXml = Get-Content -Path $driversXmlPath
+
+            $hpDriverPath = $driversXml.NewDataSet.HPClientDriverPackCatalog.SoftPaqList.SoftPaq | Where-Object { ($_.name -match $DriverModel) -and ($_.name -match "$($SupportedOsVersionFull)") } | Sort-Object id | Select-Object -First 1
+            $hpDriverUrl = $hpDriverPath.Url
+            $hpDriverSetup = $hpDriverUrl -replace '.*/', ''
+
+            if ($null -eq $hpDriverUrl) {
+                Write-Error "No HP driver found for $DriverModel. Skipping driver download."
+            } else {
+                Write-Verbose "Found HP driver URL for $DriverModel $hpDriverUrl"
+                Invoke-WebRequest -Uri $hpDriverUrl -OutFile "$scriptTempDir\$hpDriverSetup"
+
+                Write-Verbose "Extracting HP driver $hpDriverSetup to $driverpackTempDir ..."
+                Start-Process -FilePath "$scriptTempDir\$hpDriverSetup" -ArgumentList "/s /e /f $driverpackTempDir" -Wait
+
+                $searchString = $DriverModel -replace " ", "*"
+                $extractDir = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -like "*$searchString*" } | Get-ChildItem).FullName
+
+                Write-Verbose "Injecting drivers to install.wim..."
+                Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
+                "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
+            }
+        #}
+    }
+}
+
+Write-Verbose "Unmount Install WIM..."
+Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity | Out-Null
+
+Write-Verbose "Copying Windows install.wim to USB drive $tempIsoDir..."
+Move-Item -Path "$installWimFile" -Destination "$tempIsoDir\sources\install.wim" -Force | Out-Null
+
+# Add bootstick tools
+if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -ne $true) {
+    Write-Error "Could not connect to Github Usercontent which is needed for the troubleshooting scripts. Please ensure connectivity to githubusercontent.com and try again."
+} else {
+    Write-Verbose "Cloning Troubleshooting tools..."
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/andrew-s-taylor/WindowsAutopilotInfo/refs/heads/main/Community%20Version/Get-AutopilotDiagnosticsCommunity.ps1" -OutFile "$tempIsoDir\Get-AutopilotDiagnosticsCommunity.ps1"
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/andrew-s-taylor/WindowsAutopilotInfo/refs/heads/main/Community%20Version/get-windowsautopilotinfocommunity.ps1" -OutFile "$tempIsoDir\Get-WindowsAutopilotInfoCommunity.ps1"
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/refs/heads/main/Get-IntuneManagementExtensionDiagnostics.ps1" -OutFile "$tempIsoDir\Get-IntuneManagementExtensionDiagnostics.ps1"
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/niklasrst/windows-mediacreation-cli/refs/heads/main/setup-localuser.bat" -OutFile "$tempIsoDir\Create-LocalWindowsAccount.bat"
+    Invoke-WebRequest -Uri "https://download.microsoft.com/download/52de3524-4108-47e5-acda-5cc820107759/Test-IntuneAFDConnectivity.ps1" -OutFile "$tempIsoDir\Test-IntuneAFDConnectivity.ps1"
+    Invoke-WebRequest -Uri "https://github.com/niklasrst/niklasrst/raw/refs/heads/main/CMTrace.exe" -OutFile "$tempIsoDir\CMTrace.exe"
+}
+
+Write-Verbose "Creating autounattend.xml file..."
+$languageHexMap = @{
+    'en-US' = '0409'
+    'nl-NL' = '0413'
+    'fr-FR' = '040c'
+    'de-DE' = '0407'
+    'it-IT' = '0410'
+    'ja-JP' = '0411'
+    'es-ES' = '0c0a'
+    'ar-SA' = '0401'
+    'zh-CN' = '0804'
+    'zh-HK' = '0c04'
+    'zh-TW' = '0404'
+    'cs-CZ' = '0405'
+    'da-DK' = '0406'
+    'fi-FI' = '040b'
+    'el-GR' = '0408'
+    'he-IL' = '040d'
+    'hu-HU' = '040e'
+    'ko-KR' = '0412'
+    'nb-NO' = '0414'
+    'pl-PL' = '0415'
+    'pt-BR' = '0416'
+    'pt-PT' = '0816'
+    'ru-RU' = '0419'
+    'sv-SE' = '041d'
+    'tr-TR' = '041f'
+    'bg-BG' = '0402'
+    'hr-HR' = '041a'
+    'et-EE' = '0425'
+    'lv-LV' = '0426'
+    'lt-LT' = '0427'
+    'ro-RO' = '0418'
+    'sr-Latn-CS' = '081a'
+    'sk-SK' = '041b'
+    'sl-SI' = '0424'
+    'th-TH' = '041e'
+    'uk-UA' = '0422'
+    'af-ZA' = '0436'
+    'sq-AL' = '041c'
+    'am-ET' = '045e'
+    'hy-AM' = '042b'
+    'as-IN' = '044d'
+    'az-Latn-AZ' = '042c'
+    'eu-ES' = '042d'
+    'be-BY' = '0423'
+    'bn-BD' = '0845'
+    'bn-IN' = '0445'
+    'bs-Cyrl-BA' = '201a'
+    'bs-Latn-BA' = '141a'
+    'ca-ES' = '0403'
+    'fil-PH' = '0464'
+    'gl-ES' = '0456'
+    'ka-GE' = '0437'
+    'gu-IN' = '0447'
+    'ha-Latn-NG' = '0468'
+    'hi-IN' = '0439'
+    'is-IS' = '040f'
+    'ig-NG' = '0470'
+    'id-ID' = '0421'
+    'iu-Latn-CA' = '085d'
+    'ga-IE' = '083c'
+    'xh-ZA' = '0434'
+    'zu-ZA' = '0435'
+    'kn-IN' = '044b'
+    'kk-KZ' = '043f'
+    'km-KH' = '0453'
+    'rw-RW' = '0487'
+    'sw-KE' = '0441'
+    'kok-IN' = '0457'
+    'ky-KG' = '0440'
+    'lo-LA' = '0454'
+    'lb-LU' = '046e'
+    'mk-MK' = '042f'
+    'ms-BN' = '083e'
+    'ms-MY' = '043e'
+    'ml-IN' = '044c'
+    'mt-MT' = '043a'
+    'mi-NZ' = '0481'
+    'mr-IN' = '044e'
+    'ne-NP' = '0461'
+    'nn-NO' = '0814'
+    'or-IN' = '0448'
+    'ps-AF' = '0463'
+    'fa-IR' = '0429'
+    'pa-IN' = '0446'
+    'quz-PE' = '0c6b'
+    'sr-Cyrl-CS' = '0c1a'
+    'nso-ZA' = '046c'
+    'tn-ZA' = '0432'
+    'si-LK' = '045b'
+    'ta-IN' = '0449'
+    'tt-RU' = '0444'
+    'te-IN' = '044a'
+    'ur-PK' = '0420'
+    'uz-Latn-UZ' = '0443'
+    'vi-VN' = '042a'
+    'cy-GB' = '0452'
+    'wo-SN' = '0488'
+    'yo-NG' = '046a'
+}
+$localeId = $languageHexMap["$($RegionCode)"] + ":0000" + $languageHexMap["$($RegionCode)"]
+Write-Verbose "Using SetupUILanguage: $LanguageCode, InputLocale: $localeId, SystemLocale: $LanguageCode, UILanguage: $LanguageCode, UserLocale: $LanguageCode, OSImage: $Edition..."
+
+$autounattendXml= @"
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+    <settings pass="windowsPE">
+        <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="$Architecture" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <SetupUILanguage>
+                <UILanguage>$LanguageCode</UILanguage>
+            </SetupUILanguage>
+            <InputLocale>$localeId</InputLocale>
+            <SystemLocale>$RegionCode</SystemLocale>
+            <UILanguage>$LanguageCode</UILanguage>
+            <UILanguageFallback>$LanguageCode</UILanguageFallback>
+            <UserLocale>$RegionCode</UserLocale>
+        </component>
+        <component name="Microsoft-Windows-Setup" processorArchitecture="$Architecture" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <DiskConfiguration>
+                <Disk wcm:action="add">
+                    <DiskID>0</DiskID>
+                    <WillWipeDisk>true</WillWipeDisk>
+                    <CreatePartitions>
+                        <!-- Windows RE Tools partition -->
+                        <CreatePartition wcm:action="add">
+                            <Order>1</Order>
+                            <Type>Primary</Type>
+                            <Size>300</Size>
+                        </CreatePartition>
+                        <!-- System partition (ESP) -->
+                        <CreatePartition wcm:action="add">
+                            <Order>2</Order>
+                            <Type>EFI</Type>
+                            <Size>100</Size>
+                        </CreatePartition>
+                        <!-- Microsoft reserved partition (MSR) -->
+                        <CreatePartition wcm:action="add">
+                            <Order>3</Order>
+                            <Type>MSR</Type>
+                            <Size>128</Size>
+                        </CreatePartition>
+                        <!-- Windows partition -->
+                        <CreatePartition wcm:action="add">
+                            <Order>4</Order>
+                            <Type>Primary</Type>
+                            <Extend>true</Extend>
+                        </CreatePartition>
+                    </CreatePartitions>
+                    <ModifyPartitions>
+                        <!-- Windows RE Tools partition -->
+                        <ModifyPartition wcm:action="add">
+                            <Order>1</Order>
+                            <PartitionID>1</PartitionID>
+                            <Label>WINRE</Label>
+                            <Format>NTFS</Format>
+                            <TypeID>DE94BBA4-06D1-4D40-A16A-BFD50179D6AC</TypeID>
+                        </ModifyPartition>
+                        <!-- System partition (ESP) -->
+                        <ModifyPartition wcm:action="add">
+                            <Order>2</Order>
+                            <PartitionID>2</PartitionID>
+                            <Label>System</Label>
+                            <Format>FAT32</Format>
+                        </ModifyPartition>
+                        <!-- MSR partition does not need to be modified -->
+                        <ModifyPartition wcm:action="add">
+                            <Order>3</Order>
+                            <PartitionID>3</PartitionID>
+                        </ModifyPartition>
+                        <!-- Windows partition -->
+                        <ModifyPartition wcm:action="add">
+                            <Order>4</Order>
+                            <PartitionID>4</PartitionID>
+                            <Label>OS</Label>
+                            <Letter>C</Letter>
+                            <Format>NTFS</Format>
+                        </ModifyPartition>
+                    </ModifyPartitions>
+                </Disk>
+            </DiskConfiguration>
+            <ImageInstall>
+                <OSImage>
+                    <InstallFrom>
+                        <!-- Windows edition -->
+                        <MetaData wcm:action="add">
+                            <Key>/IMAGE/NAME</Key>
+                            <Value>$SupportedOsVersionFull $Edition</Value>
+                        </MetaData>
+                    </InstallFrom>
+                    <InstallTo>
+                        <DiskID>0</DiskID>
+                        <PartitionID>4</PartitionID>
+                    </InstallTo>
+                    <InstallToAvailablePartition>false</InstallToAvailablePartition>
+                </OSImage>
+            </ImageInstall>
+            <UserData>
+                <ProductKey>
+                    <!-- Do not uncomment the Key element if you are using trial ISOs -->
+                    <!-- You must uncomment the Key element (and optionally insert your own key) if you are using retail or volume license ISOs -->
+                    <Key></Key>
+                    <WillShowUI>Never</WillShowUI>
+                </ProductKey>
+                <AcceptEula>true</AcceptEula>
+                <FullName></FullName>
+                <Organization></Organization>
+            </UserData>
+            <UseConfigurationSet>true</UseConfigurationSet>
+        </component>
+    </settings>
+</unattend>
+"@
+$autounattendXml | Set-Content -Path "$tempIsoDir\autounattend.xml" -Force
+
+# Create ISO
+Write-Verbose "Creating $PSScriptRoot\$($DriverManufacturer)-$($DriverModel)_$($SupportedOsVersionShort)_$($Build)_$($LanguageCode)_$($Architecture)_autounattend.iso..."
+Start-Process -FilePath $PSScriptRoot\oscdimg\oscdimg.exe -ArgumentList "-m -o -u2 -udfver102 -bootdata:2#p0,e,b$($tempIsoDir)\boot\etfsboot.com#pEF,e,b$($tempIsoDir)\efi\microsoft\boot\efisys.bin $tempIsoDir $PSScriptRoot\$($DriverManufacturer)-$($DriverModel)_$($SupportedOsVersionShort)_$($Build)_$($LanguageCode)_$($Architecture)_autounattend.iso" -Wait
+
+# Cleanup
+Write-Verbose "Cleaning up temporary files"
+Remove-Item -Path $setupWimFile -Force | Out-Null
+Remove-Item -Path $bootWimFile -Force | Out-Null
+Remove-Item -Path $productsFile -Force | Out-Null
+Remove-Item -Path $installWimTempDir -Recurse -Force | Out-Null
+Remove-Item -Path $bootWimTempDir -Recurse -Force | Out-Null
+Remove-Item -Path $setupWimTempDir -Recurse -Force | Out-Null
+Remove-Item -Path $driverpackTempDir -Recurse -Force | Out-Null
+Remove-Item -Path "$tempIsoDir" -Recurse -Force | Out-Null
+if (Test-Path -Path "$scriptTempDir\hpdrivercatalog.xml") {
+    Remove-Item -Path "$scriptTempDir\hpdrivercatalog.xml" -Force | Out-Null
+    Remove-Item -Path "$scriptTempDir\$hpDriverSetup" -Force | Out-Null
+}
+if (Test-Path -Path "$scriptTempDir\lenovodrivercatalog.xml") {
+    Remove-Item -Path "$scriptTempDir\lenovodrivercatalog.xml" -Force | Out-Null
+    Remove-Item -Path "$scriptTempDir\$lenovoDriverSetup" -Force | Out-Null
+}
+if (Test-Path -Path "$scriptTempDir\delldrivercatalog.xml") {
+    Remove-Item -Path "$scriptTempDir\delldrivercatalog.xml" -Force | Out-Null
+    Remove-Item -Path "$scriptTempDir\$dellDriverSetup" -Force | Out-Null
+}
+
+Set-Location $CurrentLocation
+Write-Host ("Finished Windows Media Creation CLI in: {0:hh\:mm\:ss}" -f (New-TimeSpan -Start $startTime -End (Get-Date))) -ForegroundColor Green
