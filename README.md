@@ -12,12 +12,14 @@ I´ve created this script as I wanted to automate the creation of usb-drives wit
 So I came up with the idea to create a parameter based PowerShell script to ask for the needed details and then fully automated create a usb-drive, containing the Windows installation media. It currently supports Windows 10 in 22H2 and Windows 11 from 22H2 up to 25H2.
 
 ## How to use it?
-Use this command to run the script with the minimal required set of parameters.
+
+### USB Installation media
+Use this command to run the script with the minimal required set of parameters to create a usb-based installation media.
 ```powershell
 # Minimal parameter setup
 .\mctcli.ps1 -Windows 11 -Architecture amd64 -Build 25H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:"
 
-# MAximal parameter setup to inject a oem driver pack
+# Maximal parameter setup to inject a oem driver pack
 .\mctcli.ps1 -Windows 11 -Architecture amd64 -Build 25H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:" -DriverManufacturer Dell -DriverModel "Latitude 5450" -DriverInjectionType DISM -Verbose
 ```
 
@@ -34,13 +36,24 @@ If you need to add more drivers, use the `add-multi-drivers.ps1` script like thi
 ```powershell
 .\add-multi-driver.ps1 -Architecture amd64 -UsbDriveLetter "E:" -DriverManufacturer Dell -DriverModel "Latitude-5440","Latitude-5450" -DriverInjectionType DISM
 ```
+---
+### ISO Installation media
+Use this command to run the script with the minimal required set of parameters to create a ISO-based installation media.
+```powershell
+# Minimal parameter setup
+.\mctiso.ps1 -Windows 11 -Architecture amd64 -Build 25H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro
 
+# Maximal parameter setup to inject a oem driver pack
+.\mctiso.ps1 -Windows 11 -Architecture amd64 -Build 25H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -DriverManufacturer Dell -DriverModel "Latitude 5450" -Verbose
+```
+A created ISO can be used for PXE-booting or if you need to emulate a iso as a disk/dvd drive for installation.
+
+---
 It also supports `Dell`, `Lenovo` and `HP` as manufacturers.
 
 <span style="color:cornflowerblue;font-weight:bold">🛈  HINT</span><br/>
     Because of a Bug/Known issue I´ve split the solution in 3 branches.
     [main](https://github.com/niklasrst/windows-mediacreation-cli/tree/main) has a new switch `-DriverInjectionType` to control if you want to use the autounattend.xml file with the `drivers`-folder to apply driver files to the system, or use dism to inject the drivers in the `install.wim` file. Starting at Windows 11 25H2 it seems to be broken to use a `drivers`-folder to apply driver files to the system because of a switch in the setup process. So you can use this switch or switch to one of the branches [autounattend-driver-injection](https://github.com/niklasrst/windows-mediacreation-cli/tree/autounattend-driver-injection) or [dism-driver-injection](https://github.com/niklasrst/windows-mediacreation-cli/tree/dism-driver-injection) to use dedicated methods of driver injection. <br><br>
-    Hopefully Microsoft makes the way using autounattend.xml working again in the next Windows release but until then we can use the classic dism way. When using DISM to inject drivers the tool will create a `installwimdrivers.csv` located at `\sources\` on the usb-drive which includes the driver manufacturer and model so that you later can check which drivers are installed in the `wim`.
 
 ### Parameter defenitions
 Check out the following section to learn what the parameters are used for.
