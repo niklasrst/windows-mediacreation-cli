@@ -22,16 +22,12 @@
     For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X390" or (HP) "Z6 G5".
     The default is not set.
 
-.PARAMETER -DriverInjectionType
-    The type of driver injection to use. Valid values are "AUTOUNATTEND" or "DISM".
-    The default is not set.
-
 .PARAMETER -Verbose
    Enable verbose output.
 
 .EXAMPLE
     .\add-driver.ps1 -Architecture amd64 -UsbDriveLetter "D:" -DriverManufacturer Dell -DriverModel "Latitude-7450"
-    This command will download the Dell driverpack for the Latitude 7450 model and add it to the USB drive D: under the drivers directory.
+    This command will download the Dell driverpack for the Latitude 7450 model and add it to the USB drive D:.
 
 .OUTPUTS
     ---
@@ -58,16 +54,8 @@ Param(
     [ValidateNotNullOrEmpty()]
     [String]$DriverManufacturer,
     [Parameter(Mandatory = $False)]
-    [String[]]$DriverModel,
-    [Parameter(Mandatory = $False)]
-    [ValidateSet("AUTOUNATTEND", "DISM")]
-    [String]$DriverInjectionType
+    [String[]]$DriverModel
 )
-
-if ($DriverManufacturer -and $DriverModel -and -not $DriverInjectionType) {
-    Write-Error "DriverInjectionType must be specified when DriverManufacturer and DriverModel are set."
-    exit 1
-}
 
 # Only allow one vendor for $DriverManufacturer
 if ($DriverManufacturer -is [array] -and $DriverManufacturer.Count -gt 1) {
@@ -104,13 +92,11 @@ if (-not (Test-Path -Path $UsbDriveLetter)) {
     Write-Error "The drive $UsbDriveLetter does not exist. Please check the drive letter and try again."
     exit 1
 }
-if ($DriverInjectionType -eq "DISM") {
-    if (-not (Test-Path -Path $dismDriverDetectionPath)) {
-        New-Item -Path "$dismDriverDetectionPath" -ItemType File -Force | Out-Null
-    } else {
-        "`n" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
-    }
-} 
+if (-not (Test-Path -Path $dismDriverDetectionPath)) {
+    New-Item -Path "$dismDriverDetectionPath" -ItemType File -Force | Out-Null
+} else {
+    "`n" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
+}
 
 Set-Location $scriptTempDir
 
@@ -120,7 +106,6 @@ Write-Verbose "Operating System Version Support: $SupportedOsVersionFull ($Suppo
 Write-Verbose "UsbDriveLetter: $UsbDriveLetter"
 Write-Verbose "DriverManufacturer: $DriverManufacturer"
 Write-Verbose "DriverModel(s): $($DriverModel -join ', ')"
-Write-Verbose "DriverInjectionType: $DriverInjectionType"
 Write-Verbose "Working Directory: $scriptTempDir"
 Write-Verbose "------------------------------------------------------"
 Write-Verbose "Starting to add driverpack at $startTime"
@@ -132,36 +117,21 @@ switch ($Architecture) {
 Write-Verbose "Architecture converted to $IsoArchitecture..."
 
 # Mount install.wim file if needed
-switch ($DriverInjectionType) {
-    "AUTOUNATTEND" {
-        # No need to mount install.wim for AUTOUNATTEND
-        Write-Verbose "Adding driver directory..."
-        New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
-    }
-    "DISM" {
-        Write-Verbose "Mounting install.wim file..."
-        try {
-            Move-Item -Path "$UsbDriveLetter\sources\install.wim" -Destination $installWimFile -Force -ErrorAction Stop
-        }
-        catch {
-            exit 1
-        }
-
-        try {
-            Mount-WindowsImage -ImagePath $installWimFile -Path $installWimTempDir -Index 1 | Out-Null
-        }
-        catch {
-            Write-Warning "Mounting setup.wim failed. Please check the file and try again."
-            exit 1
-        } 
-    }
-    default {
-        # No need to mount install.wim for default which uses AUTOUNATTEND
-        Write-Verbose "Adding driver directory..."
-        New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
-    }
+Write-Verbose "Mounting install.wim file..."
+try {
+    Move-Item -Path "$UsbDriveLetter\sources\install.wim" -Destination $installWimFile -Force -ErrorAction Stop
+}
+catch {
+    exit 1
 }
 
+try {
+    Mount-WindowsImage -ImagePath $installWimFile -Path $installWimTempDir -Index 1 | Out-Null
+}
+catch {
+    Write-Warning "Mounting setup.wim failed. Please check the file and try again."
+    exit 1
+} 
 
 foreach ($model in $DriverModel) {
     switch ($DriverManufacturer) {
@@ -198,25 +168,10 @@ foreach ($model in $DriverModel) {
 
                     $oemDriverPackDir = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($currentModel).*" }).FullName
                     
-                    switch ($DriverInjectionType) {
-                        "AUTOUNATTEND" {
-                            Write-Verbose "Copying Dell driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)..."
-                            $oemDriverPackName = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($currentModel).*" }).Name
-                            $oemDriverMediaDir = $DriverManufacturer + "-" + $oemDriverPackName
-                            Copy-Item -Path "$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture\" -Destination "$UsbDriveLetter\drivers\$oemDriverMediaDir" -Recurse -Force | Out-Null
-                        }
-                        "DISM" {
-                            Write-Verbose "Injecting drivers to install.wim..."
-                            Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture /recurse | Out-Null
+                    Write-Verbose "Injecting drivers to install.wim..."
+                    Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture /recurse | Out-Null
 
-                            "$DriverManufacturer,$currentModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
-                        }
-                        default {
-                            $oemDriverPackName = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($currentModel).*" }).Name
-                            $oemDriverMediaDir = $DriverManufacturer + "-" + $oemDriverPackName
-                            Copy-Item -Path "$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture\" -Destination "$UsbDriveLetter\drivers\$oemDriverMediaDir" -Recurse -Force | Out-Null
-                        }
-                    }
+                    "$DriverManufacturer,$currentModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
                 }
             }
         }
@@ -248,24 +203,10 @@ foreach ($model in $DriverModel) {
                     $driverModelPath = $lenovoDriverSetup -replace ".exe", ""
                     $extractDir = (Get-ChildItem -Path "$driverpackTempDir\Drivers\SCCM\$($driverModelPath)").FullName
 
-                    switch ($DriverInjectionType) {
-                        "AUTOUNATTEND" {
-                            Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)..."
-                            New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)" -ItemType Directory -Force | Out-Null
-                            Copy-Item -Path "$extractDir\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)" -Recurse -Force | Out-Null
-                        }
-                        "DISM" {
-                            Write-Verbose "Injecting drivers to install.wim..."
-                            Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
+                    Write-Verbose "Injecting drivers to install.wim..."
+                    Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
 
-                            "$DriverManufacturer,$currentModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
-                        }
-                        default {
-                            Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)..."
-                            New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)" -ItemType Directory -Force | Out-Null
-                            Copy-Item -Path "$extractDir\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)" -Recurse -Force | Out-Null
-                        }
-                    }
+                    "$DriverManufacturer,$currentModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
                 }
             }
         }
@@ -298,45 +239,21 @@ foreach ($model in $DriverModel) {
                     $searchString = $currentModel -replace " ", "*"
                     $extractDir = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -like "*$searchString*" } | Get-ChildItem).FullName
 
-                    switch ($DriverInjectionType) {
-                        "AUTOUNATTEND" {
-                            Write-Verbose "Copying HP driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)..."
-                            New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)" -ItemType Directory -Force | Out-Null
-                            Copy-Item -Path "$($extractDir)\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)" -Recurse -Force | Out-Null
-                        }
-                        "DISM" {
-                            Write-Verbose "Injecting drivers to install.wim..."
-                            Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
+                    Write-Verbose "Injecting drivers to install.wim..."
+                    Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
 
-                            "$DriverManufacturer,$currentModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
-                        }
-                        default {
-                            Write-Verbose "Copying HP driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)..."
-                            New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)" -ItemType Directory -Force | Out-Null
-                            Copy-Item -Path "$($extractDir)\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($currentModel)" -Recurse -Force | Out-Null
-                        }
-                    }  
+                    "$DriverManufacturer,$currentModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
                 }
             }
         }
     }
 }
 
-switch ($DriverInjectionType) {
-    "AUTOUNATTEND" {
-        # No need to unmount install.wim for AUTOUNATTEND
-    }
-    "DISM" {
-        Write-Verbose "Unmount Install WIM..."
-        Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity | Out-Null
+Write-Verbose "Unmount Install WIM..."
+Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity | Out-Null
 
-        Write-Verbose "Copying Windows install.wim to USB drive $UsbDriveLetter..."
-        Move-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Force | Out-Null
-     }
-    default {
-        # No need to unmount install.wim for default which is AUTOUNATTEND
-    }
-}
+Write-Verbose "Copying Windows install.wim to USB drive $UsbDriveLetter..."
+Move-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Force | Out-Null
 
 # Cleanup
 Write-Verbose "Cleaning up temporary files"

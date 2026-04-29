@@ -42,14 +42,13 @@
     For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X390" or (HP) "Z6 G5".
 
 .PARAMETER -DriverInjectionType
-    The type of driver injection to use. Valid values are "AUTOUNATTEND" or "DISM".
-    The default is AUTOUNATTEND.
+    The type of driver injection to use. Valid values are  "DISM".
 
 .PARAMETER -Verbose
    Enable verbose output.
 
 .EXAMPLE
-    .\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "de-de" -RegionCode "de-de" -Edition Pro -UsbDriveLetter "D:" -DriverManufacturer Dell -DriverModel "Latitude-5440" -DriverInjectionType AUTOUNATTEND -Verbose
+    .\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "de-de" -RegionCode "de-de" -Edition Pro -UsbDriveLetter "D:" -DriverManufacturer Dell -DriverModel "Latitude-5440" -Verbose
     This example downloads the Windows 11 x64 ESD file with build 24H2 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable media on the drive D:.
 
 .OUTPUTS
@@ -90,23 +89,12 @@ Param(
     [ValidateSet("Dell", "Lenovo", "HP")]
     [String]$DriverManufacturer,
     [Parameter(Mandatory = $False)]
-    [String]$DriverModel,
-    [Parameter(Mandatory = $False)]
-    [ValidateSet("AUTOUNATTEND", "DISM")]
-    [String]$DriverInjectionType
+    [String]$DriverModel
 )
 
 #Requires -RunAsAdministrator
-if ($PSVersionTable.PSVersion.Major -lt 7) {
-    Write-Error "This script requires PowerShell 7 or higher. Please upgrade your PowerShell version."
-    exit 1
-}
 if ([int]((Get-PSDrive -PSProvider 'FileSystem' | Where-Object { $_.Root -eq "$($env:SystemDrive)\" }).Free / 1GB) -lt 10) {
     Write-Error "No enough disk space. Please ensure that at least 10GB of disk space are available and try again."
-    exit 1
-}
-if ($DriverManufacturer -and $DriverModel -and -not $DriverInjectionType) {
-    Write-Error "DriverInjectionType must be specified when DriverManufacturer and DriverModel are set."
     exit 1
 }
 
@@ -161,7 +149,6 @@ Write-Verbose "Edition: $Edition"
 Write-Verbose "UsbDriveLetter: $UsbDriveLetter"
 Write-Verbose "DriverManufacturer: $DriverManufacturer"
 Write-Verbose "DriverModel: $DriverModel"
-Write-Verbose "DriverInjectionType: $DriverInjectionType"
 Write-Verbose "Working Directory: $scriptTempDir"
 Write-Verbose "------------------------------------------------------"
 Write-Verbose "Starting Windows Media Creation CLI at $startTime"
@@ -326,26 +313,12 @@ catch {
 }
 
 # Mount install.wim file if needed
-switch ($DriverInjectionType) {
-    "AUTOUNATTEND" {
-        # No need to mount install.wim for AUTOUNATTEND
-        Write-Verbose "Adding driver directory..."
-        New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
-    }
-    "DISM" {
-        Write-Verbose "Mounting install.wim file..."
-        try {
-            Mount-WindowsImage -ImagePath $installWimFile -Path $installWimTempDir -Index 1 | Out-Null
-        }
-        catch {
-            Write-Warning "Mounting setup.wim failed. Please check the file and try again."
-        } 
-    }
-    default {
-        # No need to mount install.wim for default which uses AUTOUNATTEND
-        Write-Verbose "Adding driver directory..."
-        New-Item -Path "$UsbDriveLetter" -Name "drivers" -ItemType Directory -Force | Out-Null
-    }
+Write-Verbose "Mounting install.wim file..."
+try {
+    Mount-WindowsImage -ImagePath $installWimFile -Path $installWimTempDir -Index 1 | Out-Null
+}
+catch {
+    Write-Warning "Mounting setup.wim failed. Please check the file and try again."
 }
 
 # Create bootable USB drive
@@ -450,27 +423,11 @@ switch ($DriverManufacturer) {
                 Start-Process -FilePath "$scriptTempDir\$dellDriverSetup" -ArgumentList "/s /e=$driverpackTempDir" -Wait
 
                 $oemDriverPackDir = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($DriverModel).*" }).FullName
-                
-                switch ($DriverInjectionType) {
-                    "AUTOUNATTEND" {
-                        Write-Verbose "Copying Dell driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-                        $oemDriverPackName = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($DriverModel).*" }).Name
-                        $oemDriverMediaDir = $DriverManufacturer + "-" + $oemDriverPackName
-                        Copy-Item -Path "$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture\" -Destination "$UsbDriveLetter\drivers\$oemDriverMediaDir" -Recurse -Force | Out-Null
-                    }
-                    "DISM" {
-                        Write-Verbose "Injecting drivers to install.wim..."
-                        Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture /recurse | Out-Null
 
-                        "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
-                    }
+                Write-Verbose "Injecting drivers to install.wim..."
+                Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture /recurse | Out-Null
 
-                    default {
-                        $oemDriverPackName = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -match "$($DriverModel).*" }).Name
-                        $oemDriverMediaDir = $DriverManufacturer + "-" + $oemDriverPackName
-                        Copy-Item -Path "$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture\" -Destination "$UsbDriveLetter\drivers\$oemDriverMediaDir" -Recurse -Force | Out-Null
-                    }
-                }
+                "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
             }   
         #}
     }
@@ -501,24 +458,10 @@ switch ($DriverManufacturer) {
                 $driverModelPath = $lenovoDriverSetup -replace ".exe", ""
                 $extractDir = (Get-ChildItem -Path "$driverpackTempDir\Drivers\SCCM\$($driverModelPath)").FullName
 
-                switch ($DriverInjectionType) {
-                    "AUTOUNATTEND" {
-                        Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-                        New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
-                        Copy-Item -Path "$extractDir\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
-                    }
-                    "DISM" {
-                        Write-Verbose "Injecting drivers to install.wim..."
-                        Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
+                Write-Verbose "Injecting drivers to install.wim..."
+                Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
 
-                        "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
-                    }
-                    default {
-                        Write-Verbose "Copying Lenovo driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-                        New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
-                        Copy-Item -Path "$extractDir\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
-                    }
-                }
+                "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
             }
         #}
     }
@@ -550,41 +493,18 @@ switch ($DriverManufacturer) {
                 $searchString = $DriverModel -replace " ", "*"
                 $extractDir = (Get-ChildItem -Path $driverpackTempDir -Directory | Where-Object { $_.Name -like "*$searchString*" } | Get-ChildItem).FullName
 
-                switch ($DriverInjectionType) {
-                    "AUTOUNATTEND" {
-                        Write-Verbose "Copying HP driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-                        New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
-                        Copy-Item -Path "$($extractDir)\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
-                    }
-                    "DISM" {
-                        Write-Verbose "Injecting drivers to install.wim..."
-                        Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
+                Write-Verbose "Injecting drivers to install.wim..."
+                Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
 
-                        "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
-                    }
-                    default {
-                        Write-Verbose "Copying HP driver to $UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)..."
-                        New-Item -Path "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -ItemType Directory -Force | Out-Null
-                        Copy-Item -Path "$($extractDir)\*" -Destination "$UsbDriveLetter\drivers\$($DriverManufacturer)-$($DriverModel)" -Recurse -Force | Out-Null
-                    }
-                }  
+                "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
             }
         #}
     }
 }
 
-switch ($DriverInjectionType) {
-    "AUTOUNATTEND" {
-        # No need to unmount install.wim for AUTOUNATTEND
-    }
-    "DISM" {
-        Write-Verbose "Unmount Install WIM..."
-        Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity | Out-Null
-     }
-    default {
-        # No need to unmount install.wim for default which is AUTOUNATTEND
-    }
-}
+
+Write-Verbose "Unmount Install WIM..."
+Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity | Out-Null
 
 Write-Verbose "Copying Windows install.wim to USB drive $UsbDriveLetter..."
 Move-Item -Path "$installWimFile" -Destination "$UsbDriveLetter\sources\install.wim" -Force | Out-Null
@@ -706,133 +626,6 @@ $languageHexMap = @{
 $localeId = $languageHexMap["$($RegionCode)"] + ":0000" + $languageHexMap["$($RegionCode)"]
 Write-Verbose "Using SetupUILanguage: $LanguageCode, InputLocale: $localeId, SystemLocale: $LanguageCode, UILanguage: $LanguageCode, UserLocale: $LanguageCode, OSImage: $Edition..."
 
-switch ($DriverInjectionType) {
-    "AUTOUNATTEND" {
-$autounattendXml= @"
-<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
-    <settings pass="windowsPE">
-        <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="$Architecture" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
-            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
-            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <SetupUILanguage>
-                <UILanguage>$LanguageCode</UILanguage>
-            </SetupUILanguage>
-            <InputLocale>$localeId</InputLocale>
-            <SystemLocale>$RegionCode</SystemLocale>
-            <UILanguage>$LanguageCode</UILanguage>
-            <UILanguageFallback>$LanguageCode</UILanguageFallback>
-            <UserLocale>$RegionCode</UserLocale>
-        </component>
-        <component name="Microsoft-Windows-Setup" processorArchitecture="$Architecture" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
-            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
-            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <DiskConfiguration>
-                <Disk wcm:action="add">
-                    <DiskID>0</DiskID>
-                    <WillWipeDisk>true</WillWipeDisk>
-                    <CreatePartitions>
-                        <!-- Windows RE Tools partition -->
-                        <CreatePartition wcm:action="add">
-                            <Order>1</Order>
-                            <Type>Primary</Type>
-                            <Size>300</Size>
-                        </CreatePartition>
-                        <!-- System partition (ESP) -->
-                        <CreatePartition wcm:action="add">
-                            <Order>2</Order>
-                            <Type>EFI</Type>
-                            <Size>100</Size>
-                        </CreatePartition>
-                        <!-- Microsoft reserved partition (MSR) -->
-                        <CreatePartition wcm:action="add">
-                            <Order>3</Order>
-                            <Type>MSR</Type>
-                            <Size>128</Size>
-                        </CreatePartition>
-                        <!-- Windows partition -->
-                        <CreatePartition wcm:action="add">
-                            <Order>4</Order>
-                            <Type>Primary</Type>
-                            <Extend>true</Extend>
-                        </CreatePartition>
-                    </CreatePartitions>
-                    <ModifyPartitions>
-                        <!-- Windows RE Tools partition -->
-                        <ModifyPartition wcm:action="add">
-                            <Order>1</Order>
-                            <PartitionID>1</PartitionID>
-                            <Label>WINRE</Label>
-                            <Format>NTFS</Format>
-                            <TypeID>DE94BBA4-06D1-4D40-A16A-BFD50179D6AC</TypeID>
-                        </ModifyPartition>
-                        <!-- System partition (ESP) -->
-                        <ModifyPartition wcm:action="add">
-                            <Order>2</Order>
-                            <PartitionID>2</PartitionID>
-                            <Label>System</Label>
-                            <Format>FAT32</Format>
-                        </ModifyPartition>
-                        <!-- MSR partition does not need to be modified -->
-                        <ModifyPartition wcm:action="add">
-                            <Order>3</Order>
-                            <PartitionID>3</PartitionID>
-                        </ModifyPartition>
-                        <!-- Windows partition -->
-                        <ModifyPartition wcm:action="add">
-                            <Order>4</Order>
-                            <PartitionID>4</PartitionID>
-                            <Label>OS</Label>
-                            <Letter>C</Letter>
-                            <Format>NTFS</Format>
-                        </ModifyPartition>
-                    </ModifyPartitions>
-                </Disk>
-            </DiskConfiguration>
-            <ImageInstall>
-                <OSImage>
-                    <InstallFrom>
-                        <!-- Windows edition -->
-                        <MetaData wcm:action="add">
-                            <Key>/IMAGE/NAME</Key>
-                            <Value>$SupportedOsVersionFull $Edition</Value>
-                        </MetaData>
-                    </InstallFrom>
-                    <InstallTo>
-                        <DiskID>0</DiskID>
-                        <PartitionID>4</PartitionID>
-                    </InstallTo>
-                    <InstallToAvailablePartition>false</InstallToAvailablePartition>
-                </OSImage>
-            </ImageInstall>
-            <UserData>
-                <ProductKey>
-                    <!-- Do not uncomment the Key element if you are using trial ISOs -->
-                    <!-- You must uncomment the Key element (and optionally insert your own key) if you are using retail or volume license ISOs -->
-                    <Key></Key>
-                    <WillShowUI>Never</WillShowUI>
-                </ProductKey>
-                <AcceptEula>true</AcceptEula>
-                <FullName></FullName>
-                <Organization></Organization>
-            </UserData>
-            <UseConfigurationSet>true</UseConfigurationSet>
-        </component>
-    </settings>
-    <settings pass="offlineServicing">
-        <component name="Microsoft-Windows-PnpCustomizationsNonWinPE" processorArchitecture="$Architecture" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <DriverPaths>
-                <PathAndCredentials wcm:action="add" wcm:keyValue="1">
-                    <Path>%configsetroot%\drivers</Path>
-                </PathAndCredentials>
-            </DriverPaths>
-        </component>
-    </settings>
-</unattend>
-"@
-$autounattendXml | Set-Content -Path "$UsbDriveLetter\autounattend.xml" -Force
-    }
-    "DISM" {
 $autounattendXml= @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -947,133 +740,6 @@ $autounattendXml= @"
 </unattend>
 "@
 $autounattendXml | Set-Content -Path "$UsbDriveLetter\autounattend.xml" -Force
-    }
-    default {
-$autounattendXml= @"
-<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
-    <settings pass="windowsPE">
-        <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="$Architecture" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
-            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
-            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <SetupUILanguage>
-                <UILanguage>$LanguageCode</UILanguage>
-            </SetupUILanguage>
-            <InputLocale>$localeId</InputLocale>
-            <SystemLocale>$RegionCode</SystemLocale>
-            <UILanguage>$LanguageCode</UILanguage>
-            <UILanguageFallback>$LanguageCode</UILanguageFallback>
-            <UserLocale>$RegionCode</UserLocale>
-        </component>
-        <component name="Microsoft-Windows-Setup" processorArchitecture="$Architecture" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
-            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
-            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <DiskConfiguration>
-                <Disk wcm:action="add">
-                    <DiskID>0</DiskID>
-                    <WillWipeDisk>true</WillWipeDisk>
-                    <CreatePartitions>
-                        <!-- Windows RE Tools partition -->
-                        <CreatePartition wcm:action="add">
-                            <Order>1</Order>
-                            <Type>Primary</Type>
-                            <Size>300</Size>
-                        </CreatePartition>
-                        <!-- System partition (ESP) -->
-                        <CreatePartition wcm:action="add">
-                            <Order>2</Order>
-                            <Type>EFI</Type>
-                            <Size>100</Size>
-                        </CreatePartition>
-                        <!-- Microsoft reserved partition (MSR) -->
-                        <CreatePartition wcm:action="add">
-                            <Order>3</Order>
-                            <Type>MSR</Type>
-                            <Size>128</Size>
-                        </CreatePartition>
-                        <!-- Windows partition -->
-                        <CreatePartition wcm:action="add">
-                            <Order>4</Order>
-                            <Type>Primary</Type>
-                            <Extend>true</Extend>
-                        </CreatePartition>
-                    </CreatePartitions>
-                    <ModifyPartitions>
-                        <!-- Windows RE Tools partition -->
-                        <ModifyPartition wcm:action="add">
-                            <Order>1</Order>
-                            <PartitionID>1</PartitionID>
-                            <Label>WINRE</Label>
-                            <Format>NTFS</Format>
-                            <TypeID>DE94BBA4-06D1-4D40-A16A-BFD50179D6AC</TypeID>
-                        </ModifyPartition>
-                        <!-- System partition (ESP) -->
-                        <ModifyPartition wcm:action="add">
-                            <Order>2</Order>
-                            <PartitionID>2</PartitionID>
-                            <Label>System</Label>
-                            <Format>FAT32</Format>
-                        </ModifyPartition>
-                        <!-- MSR partition does not need to be modified -->
-                        <ModifyPartition wcm:action="add">
-                            <Order>3</Order>
-                            <PartitionID>3</PartitionID>
-                        </ModifyPartition>
-                        <!-- Windows partition -->
-                        <ModifyPartition wcm:action="add">
-                            <Order>4</Order>
-                            <PartitionID>4</PartitionID>
-                            <Label>OS</Label>
-                            <Letter>C</Letter>
-                            <Format>NTFS</Format>
-                        </ModifyPartition>
-                    </ModifyPartitions>
-                </Disk>
-            </DiskConfiguration>
-            <ImageInstall>
-                <OSImage>
-                    <InstallFrom>
-                        <!-- Windows edition -->
-                        <MetaData wcm:action="add">
-                            <Key>/IMAGE/NAME</Key>
-                            <Value>$SupportedOsVersionFull $Edition</Value>
-                        </MetaData>
-                    </InstallFrom>
-                    <InstallTo>
-                        <DiskID>0</DiskID>
-                        <PartitionID>4</PartitionID>
-                    </InstallTo>
-                    <InstallToAvailablePartition>false</InstallToAvailablePartition>
-                </OSImage>
-            </ImageInstall>
-            <UserData>
-                <ProductKey>
-                    <!-- Do not uncomment the Key element if you are using trial ISOs -->
-                    <!-- You must uncomment the Key element (and optionally insert your own key) if you are using retail or volume license ISOs -->
-                    <Key></Key>
-                    <WillShowUI>Never</WillShowUI>
-                </ProductKey>
-                <AcceptEula>true</AcceptEula>
-                <FullName></FullName>
-                <Organization></Organization>
-            </UserData>
-            <UseConfigurationSet>true</UseConfigurationSet>
-        </component>
-    </settings>
-    <settings pass="offlineServicing">
-        <component name="Microsoft-Windows-PnpCustomizationsNonWinPE" processorArchitecture="$Architecture" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <DriverPaths>
-                <PathAndCredentials wcm:action="add" wcm:keyValue="1">
-                    <Path>%configsetroot%\drivers</Path>
-                </PathAndCredentials>
-            </DriverPaths>
-        </component>
-    </settings>
-</unattend>
-"@
-$autounattendXml | Set-Content -Path "$UsbDriveLetter\autounattend.xml" -Force
-    }
-}
 
 # Cleanup
 Write-Verbose "Cleaning up temporary files"

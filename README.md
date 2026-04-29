@@ -20,7 +20,7 @@ Use this command to run the script with the minimal required set of parameters t
 .\mctcli.ps1 -Windows 11 -Architecture amd64 -Build 25H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:"
 
 # Maximal parameter setup to inject a oem driver pack
-.\mctcli.ps1 -Windows 11 -Architecture amd64 -Build 25H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:" -DriverManufacturer Dell -DriverModel "Latitude 5450" -DriverInjectionType DISM -Verbose
+.\mctcli.ps1 -Windows 11 -Architecture amd64 -Build 25H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:" -DriverManufacturer Dell -DriverModel "Latitude 5450" -Verbose
 ```
 
 Currently the `mctcli.ps1` script only supports to download one oem enterprise driver pack. 
@@ -50,10 +50,6 @@ A created ISO can be used for PXE-booting or if you need to emulate a iso as a d
 
 ---
 It also supports `Dell`, `Lenovo` and `HP` as manufacturers.
-
-<span style="color:cornflowerblue;font-weight:bold">🛈  HINT</span><br/>
-    Because of a Bug/Known issue I´ve split the solution in 3 branches.
-    [main](https://github.com/niklasrst/windows-mediacreation-cli/tree/main) has a new switch `-DriverInjectionType` to control if you want to use the autounattend.xml file with the `drivers`-folder to apply driver files to the system, or use dism to inject the drivers in the `install.wim` file. Starting at Windows 11 25H2 it seems to be broken to use a `drivers`-folder to apply driver files to the system because of a switch in the setup process. So you can use this switch or switch to one of the branches [autounattend-driver-injection](https://github.com/niklasrst/windows-mediacreation-cli/tree/autounattend-driver-injection) or [dism-driver-injection](https://github.com/niklasrst/windows-mediacreation-cli/tree/dism-driver-injection) to use dedicated methods of driver injection. <br><br>
 
 ### Parameter defenitions
 Check out the following section to learn what the parameters are used for.
@@ -93,10 +89,6 @@ Check out the following section to learn what the parameters are used for.
 .PARAMETER -DriverModel
     The model of the drivers to download. This is optional and will be used to filter the drivers from the manufacturer.
     For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X390" or (HP) "Z6 G5".
-
-.PARAMETER -DriverInjectionType
-    The type of driver injection to use. Valid values are "AUTOUNATTEND" or "DISM".
-    The default is AUTOUNATTEND.
 
 .PARAMETER -Verbose
    Enable verbose output.
