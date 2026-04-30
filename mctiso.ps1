@@ -37,7 +37,6 @@
     The model of the drivers to download. This is optional and will be used to filter the drivers from the manufacturer.
     For example (Dell) "Latitude-5440" or (Lenovo) "ThinkPad X390" or (HP) "Z6 G5".
 
-
 .PARAMETER -Verbose
    Enable verbose output.
 
@@ -65,7 +64,7 @@ Param(
     [String]$Windows = "11",
     [Parameter(Mandatory = $True)]
     [ValidateSet("amd64", "arm64")]
-    [String]$Architecture = "x64",
+    [String]$Architecture = "amd64",
     [Parameter(Mandatory = $True)]
     [ValidateSet("25H2", "24H2", "23H2", "22H2")]
     [String]$Build = "25H2",
@@ -84,6 +83,41 @@ Param(
 )
 
 #Requires -RunAsAdministrator
+#$ErrorActionPreference = 'Stop'
+
+function Assert-PathExists {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    if (-not (Test-Path -Path $Path)) {
+        throw $Message
+    }
+}
+
+function Invoke-DismExportImage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourceImageFile,
+        [Parameter(Mandatory = $true)]
+        [int]$SourceIndex,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationImageFile,
+        [Parameter(Mandatory = $true)]
+        [string]$ImageDescription
+    )
+
+    & Dism.exe /Export-Image /SourceImageFile:$SourceImageFile /SourceIndex:$SourceIndex /DestinationImageFile:$DestinationImageFile /Compress:max /CheckIntegrity | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to export $ImageDescription from $SourceImageFile using index $SourceIndex. DISM exit code: $LASTEXITCODE"
+    }
+
+    Assert-PathExists -Path $DestinationImageFile -Message "Expected exported image was not created: $DestinationImageFile"
+}
+
 if ([int]((Get-PSDrive -PSProvider 'FileSystem' | Where-Object { $_.Root -eq "$($env:SystemDrive)\" }).Free / 1GB) -lt 10) {
     Write-Error "No enough disk space. Please ensure that at least 10GB of disk space are available and try again."
     exit 1
@@ -147,11 +181,11 @@ Write-Verbose "Starting Windows Media Creation CLI at $startTime"
 switch ($Edition){
     "Home" { $IsoEdition = "CLIENTCONSUMER_RET" }
     "Pro" { $IsoEdition = "CLIENTBUSINESS_VOL" }
-    "ProN" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "Pro N" { $IsoEdition = "CLIENTBUSINESS_VOL" }
     "Enterprise" { $IsoEdition = "CLIENTBUSINESS_VOL" }
-    "EnterpriseN" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "Enterprise N" { $IsoEdition = "CLIENTBUSINESS_VOL" }
     "Education" { $IsoEdition = "CLIENTBUSINESS_VOL" }
-    "EducationN" { $IsoEdition = "CLIENTBUSINESS_VOL" }
+    "Education N" { $IsoEdition = "CLIENTBUSINESS_VOL" }
 }
 
 Write-Verbose "Pulling $Edition from $IsoEdition..."
@@ -227,6 +261,8 @@ $installEsdFile = "$scriptTempDir\$($esdVersion).esd"
 $bootWimFile = "$scriptTempDir\boot.wim"
 $setupWimFile = "$scriptTempDir\setup.wim"
 $installWimFile = "$scriptTempDir\install.wim"
+$setupWimMounted = $false
+$installWimMounted = $false
 if (Test-Path -Path $installEsdFile) {
     Write-Verbose "ESD file already exists. Skipping download..."
 } else {
@@ -240,97 +276,80 @@ if (Test-Path -Path $installEsdFile) {
     }
 }
 
+$windowsImages = Get-WindowsImage -ImagePath $installEsdFile
+$setupImage = $windowsImages | Where-Object { $_.ImageName -eq 'Windows Setup Media' } | Select-Object -First 1
+$bootImage = $windowsImages | Where-Object { $_.ImageName -match "Microsoft Windows Setup \(.*$Architecture\)" } | Select-Object -First 1
+$installImageName = "$SupportedOsVersionFull $Edition"
+$installImage = $windowsImages | Where-Object { $_.ImageName -eq $installImageName } | Select-Object -First 1
+
+if ($null -eq $setupImage) {
+    throw "Could not find 'Windows Setup Media' in $installEsdFile."
+}
+
+if ($null -eq $bootImage) {
+    throw "Could not find a boot image for architecture '$Architecture' in $installEsdFile."
+}
+
+if ($null -eq $installImage) {
+    throw "Could not find install image '$installImageName' in $installEsdFile."
+}
+
 # Extract setup.wim
 Write-Verbose "Extracting setup from ESD to WIM format..."
 if (-not (Test-Path -Path $setupWimFile)) {
-    $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installEsdFile | Out-String
-    $setupIndex = ($installWimInfo -split "`n" | ForEach-Object {
-        if ($_ -match "Name\s*:\s*Windows Setup Media") {
-            $previousLine = $previousLine -replace "Index\s*:\s*", ""
-            return $previousLine
-        }
-        $previousLine = $_
-    }) | Select-Object -First 1
-
-    $setupIndex = [int32]$setupIndex
-
-    Write-Verbose "Found setup.wim in index: $setupIndex. Exporting the image to WIM format..."
-    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$setupIndex /DestinationImageFile:$setupWimFile /Compress:max /CheckIntegrity | Out-Null
+    Write-Verbose "Found setup.wim in index: $($setupImage.ImageIndex). Exporting the image to WIM format..."
+    Invoke-DismExportImage -SourceImageFile $installEsdFile -SourceIndex $setupImage.ImageIndex -DestinationImageFile $setupWimFile -ImageDescription 'setup.wim'
 } 
 
 # Extract boot.wim
 Write-Verbose "Extracting boot from ESD to WIM format..."
 if (-not (Test-Path -Path $bootWimFile)) {
-    $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installEsdFile | Out-String
-    $bootIndex = ($installWimInfo -split "`n" | ForEach-Object {
-        if ($_ -match "Name\s*:\s*Microsoft Windows Setup (.*$Architecture)") {
-            $previousLine = $previousLine -replace "Index\s*:\s*", ""
-            return $previousLine
-        }
-        $previousLine = $_
-    }) | Select-Object -First 1
-
-    $bootIndex = [int32]$bootIndex
-
-    Write-Verbose "Found boot.wim in index: $bootIndex. Exporting the image to WIM format..."
-    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$bootIndex /DestinationImageFile:$bootWimFile /Compress:max /CheckIntegrity | Out-Null
+    Write-Verbose "Found boot.wim in index: $($bootImage.ImageIndex). Exporting the image to WIM format..."
+    Invoke-DismExportImage -SourceImageFile $installEsdFile -SourceIndex $bootImage.ImageIndex -DestinationImageFile $bootWimFile -ImageDescription 'boot.wim'
 }
 
 # Extract install.wim
 Write-Verbose "Extracting install from ESD to WIM format..."
 if (-not (Test-Path -Path $installWimFile)) {
-    $installWimInfo = Dism.exe /Get-WimInfo /WimFile:$installEsdFile | Out-String
-    $editionIndex = ($installWimInfo -split "`n" | ForEach-Object {
-        if ($_ -match "Name\s*:\s*Windows.*$Edition") {
-            $previousLine = $previousLine -replace "Index\s*:\s*", ""
-            return $previousLine
-        }
-        $previousLine = $_
-    }) | Select-Object -First 1
-
-    $editionIndex = [int32]$editionIndex
-
-    Write-Verbose "Found install.wim for $Edition in index: $editionIndex. Exporting the image to WIM format..."
-    Dism /Export-Image /SourceImageFile:$installEsdFile /SourceIndex:$editionIndex /DestinationImageFile:$installWimFile /Compress:max /CheckIntegrity | Out-Null
+    Write-Verbose "Found install.wim for $Edition in index: $($installImage.ImageIndex). Exporting the image to WIM format..."
+    Invoke-DismExportImage -SourceImageFile $installEsdFile -SourceIndex $installImage.ImageIndex -DestinationImageFile $installWimFile -ImageDescription 'install.wim'
 } 
 
 # Mount wim file(s)
 Write-Verbose "Mounting setup.wim file..."
-try {
-    Mount-WindowsImage -ImagePath $setupWimFile -Path "$setupWimTempDir" -Index 1 | Out-Null
-}
-catch {
-    Write-Warning "Mounting setup.wim failed. Please check the file and try again."
-}
+Assert-PathExists -Path $setupWimFile -Message "setup.wim was not created at $setupWimFile"
+Mount-WindowsImage -ImagePath $setupWimFile -Path "$setupWimTempDir" -Index 1 -ErrorAction Stop | Out-Null
+$setupWimMounted = $true
 
 # Mount install.wim file if needed
 Write-Verbose "Mounting install.wim file..."
-try {
-    Mount-WindowsImage -ImagePath $installWimFile -Path $installWimTempDir -Index 1 | Out-Null
-}
-catch {
-    Write-Warning "Mounting install.wim failed. Please check the file and try again."
-} 
+Assert-PathExists -Path $installWimFile -Message "install.wim was not created at $installWimFile"
+Mount-WindowsImage -ImagePath $installWimFile -Path $installWimTempDir -Index 1 -ErrorAction Stop | Out-Null
+$installWimMounted = $true
 
 # Adding Windows Setup files
 Write-Verbose "Copying Windows Setup files to USB drive $tempIsoDir..."
 Copy-Item -Path "$setupWimTempDir\*" -Destination "$tempIsoDir" -Recurse -Force | Out-Null
-Move-Item -Path "$tempIsoDir\sources\_manifest" -Destination "$tempIsoDir\" -Force | Out-Null
+if (Test-Path -Path "$tempIsoDir\sources\_manifest") {
+    Move-Item -Path "$tempIsoDir\sources\_manifest" -Destination "$tempIsoDir\" -Force | Out-Null
+}
 
 Write-Verbose "Unmount Setup WIM..."
-Dismount-WindowsImage -Path $setupWimTempDir -Discard | Out-Null
+if ($setupWimMounted) {
+    Dismount-WindowsImage -Path $setupWimTempDir -Discard -ErrorAction Stop | Out-Null
+    $setupWimMounted = $false
+}
 
 Write-Verbose "Copying Windows boot.wim to USB drive $tempIsoDir..."
+Assert-PathExists -Path $bootWimFile -Message "boot.wim was not created at $bootWimFile"
 Copy-Item -Path "$bootWimFile" -Destination "$tempIsoDir\sources\boot.wim" -Recurse -Force | Out-Null
 $dismDriverDetectionPath = "$tempIsoDir\installwimdrivers.csv"
 New-Item -Path "$dismDriverDetectionPath" -ItemType File -Force | Out-Null
 
-Write-Verbose "Copying EFI Files to $efipartition.DriveLetter..."
+Write-Verbose "Copying EFI Files to ISO..."
 if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -ne $true) {
     Write-Error "Could not connect to Github which is needed for the UEFI drivers. Please ensure connectivity to Github.com and try again."
 } else {
-    Copy-Item "$tempIsoDir\boot" "$tempIsoDir\" -Recurse
-    #Copy-Item "$tempIsoDir\efi" "$tempIsoDir\" -Recurse
     New-Item -Path "$tempIsoDir" -Name "efi" -ItemType Directory -Force | Out-Null
     New-Item -Path "$tempIsoDir\efi" -Name "Boot" -ItemType Directory -Force | Out-Null
     New-Item -Path "$tempIsoDir\efi" -Name "$BootloaderManufacturer" -ItemType Directory -Force | Out-Null
@@ -344,20 +363,11 @@ if ((Test-NetConnection -ComputerName "github.com" -Port 80).TcpTestSucceeded -n
     Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_arm.efi" -OutFile "$tempIsoDir\efi\$BootloaderManufacturer\ntfs_arm.efi"
     Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_ia32.efi" -OutFile "$tempIsoDir\efi\$BootloaderManufacturer\ntfs_ia32.efi"
     Invoke-WebRequest -Uri "https://github.com/pbatard/ntfs-3g/releases/download/1.7/ntfs_x64.efi" -OutFile "$tempIsoDir\efi\$BootloaderManufacturer\ntfs_x64.efi"
-    #Copy-Item "$tempIsoDir\bootmgr*" "$tempIsoDir\" -Recurse -ErrorAction SilentlyContinue
-    #Copy-Item "$tempIsoDir\setup.exe" "$tempIsoDir\" -Recurse
-    #Copy-Item "$tempIsoDir\sources\boot.wim" "$tempIsoDir\sources\boot.wim" -Force -Recurse
-    #Copy-Item -Path "$tempIsoDir\efi\*" -Destination "$($efipartition.DriveLetter):" -Recurse -Force | Out-Null
-    #Copy-Item -Path "$tempIsoDir\bootmgr" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
-    #Copy-Item -Path "$tempIsoDir\bootmgr.efi" -Destination "$($efipartition.DriveLetter):" -Force | Out-Null
 }
 
 switch ($DriverManufacturer) {
     "Dell" 
     {
-        #if ((Test-NetConnection -ComputerName "dell.com" -Port 80).TcpTestSucceeded -ne $true) {
-        #    Write-Error "Could not connect to Dell which is needed for the drivers. Please ensure connectivity to dell.com and try again."
-        #} else {
             Write-Verbose "Searching Dell drivers for $DriverModel ..."
             if ($DriverModel -match "\s") {
                 Write-Verbose "Replacing spaces in DriverModel with dashes..."
@@ -388,13 +398,9 @@ switch ($DriverManufacturer) {
                 Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$oemDriverPackDir\$SupportedOsVersion\$IsoArchitecture /recurse | Out-Null
                 "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force   
             }   
-        #}
     }
     "Lenovo" 
     {
-        #if ((Test-NetConnection -ComputerName "lenovo.com" -Port 80).TcpTestSucceeded -ne $true) {
-        #    Write-Error "Could not connect to Lenovo which is needed for the drivers. Please ensure connectivity to lenovo.com and try again."
-        #} else {
             Write-Verbose "Searching Lenovo drivers for $DriverModel ..."
             Invoke-WebRequest -Uri "https://download.lenovo.com/cdrt/td/catalogv2.xml" -OutFile "$scriptTempDir\lenovodrivercatalog.xml"
             $driversXmlPath = "$scriptTempDir\lenovodrivercatalog.xml"
@@ -421,13 +427,9 @@ switch ($DriverManufacturer) {
                 Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
                 "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
             }
-        #}
     }
     "HP" 
     {
-        #if ((Test-NetConnection -ComputerName "hp.com" -Port 80).TcpTestSucceeded -ne $true) {
-        #    Write-Error "Could not connect to HP which is needed for the drivers. Please ensure connectivity to hp.com and try again."
-        #} else {
             Write-Verbose "Searching HP drivers for $DriverModel ..."
             Invoke-WebRequest -Uri "https://hpia.hpcloud.hp.com/downloads/driverpackcatalog/HPClientDriverPackCatalog.cab" -OutFile "$scriptTempDir\hpdrivercatalog.cab"
             Start-Process -FilePath "C:\Windows\System32\expand.exe" -ArgumentList "-F:* $scriptTempDir\hpdrivercatalog.cab $scriptTempDir\hpdrivercatalog.xml" -Wait | Out-Null
@@ -455,14 +457,17 @@ switch ($DriverManufacturer) {
                 Dism.exe /Image:$installWimTempDir /Add-Driver /Driver:$extractDir /recurse | Out-Null
                 "$DriverManufacturer,$DriverModel" | Out-File -FilePath $dismDriverDetectionPath -Append -Force
             }
-        #}
     }
 }
 
 Write-Verbose "Unmount Install WIM..."
-Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity | Out-Null
+if ($installWimMounted) {
+    Dismount-WindowsImage -Path $installWimTempDir -Save -CheckIntegrity -ErrorAction Stop | Out-Null
+    $installWimMounted = $false
+}
 
 Write-Verbose "Copying Windows install.wim to USB drive $tempIsoDir..."
+Assert-PathExists -Path $installWimFile -Message "install.wim was not created at $installWimFile"
 Move-Item -Path "$installWimFile" -Destination "$tempIsoDir\sources\install.wim" -Force | Out-Null
 
 # Add bootstick tools
@@ -703,14 +708,30 @@ Start-Process -FilePath $PSScriptRoot\oscdimg\oscdimg.exe -ArgumentList "-m -o -
 
 # Cleanup
 Write-Verbose "Cleaning up temporary files"
-Remove-Item -Path $setupWimFile -Force | Out-Null
-Remove-Item -Path $bootWimFile -Force | Out-Null
-Remove-Item -Path $productsFile -Force | Out-Null
-Remove-Item -Path $installWimTempDir -Recurse -Force | Out-Null
-Remove-Item -Path $bootWimTempDir -Recurse -Force | Out-Null
-Remove-Item -Path $setupWimTempDir -Recurse -Force | Out-Null
-Remove-Item -Path $driverpackTempDir -Recurse -Force | Out-Null
-Remove-Item -Path "$tempIsoDir" -Recurse -Force | Out-Null
+if (Test-Path -Path $setupWimFile) {
+    Remove-Item -Path $setupWimFile -Force | Out-Null
+}
+if (Test-Path -Path $bootWimFile) {
+    Remove-Item -Path $bootWimFile -Force | Out-Null
+}
+if (Test-Path -Path $productsFile) {
+    Remove-Item -Path $productsFile -Force | Out-Null
+}
+if (Test-Path -Path $installWimTempDir) {
+    Remove-Item -Path $installWimTempDir -Recurse -Force | Out-Null
+}
+if (Test-Path -Path $bootWimTempDir) {
+    Remove-Item -Path $bootWimTempDir -Recurse -Force | Out-Null
+}
+if (Test-Path -Path $setupWimTempDir) {
+    Remove-Item -Path $setupWimTempDir -Recurse -Force | Out-Null
+}
+if (Test-Path -Path $driverpackTempDir) {
+    Remove-Item -Path $driverpackTempDir -Recurse -Force | Out-Null
+}
+if (Test-Path -Path "$tempIsoDir") {
+    Remove-Item -Path "$tempIsoDir" -Recurse -Force | Out-Null
+}
 if (Test-Path -Path "$scriptTempDir\hpdrivercatalog.xml") {
     Remove-Item -Path "$scriptTempDir\hpdrivercatalog.xml" -Force | Out-Null
     Remove-Item -Path "$scriptTempDir\$hpDriverSetup" -Force | Out-Null
