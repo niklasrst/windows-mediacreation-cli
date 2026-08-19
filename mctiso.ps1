@@ -79,7 +79,9 @@ Param(
     [ValidateSet("Dell", "Lenovo", "HP")]
     [String]$DriverManufacturer,
     [Parameter(Mandatory = $False)]
-    [String]$DriverModel
+    [String]$DriverModel,
+    [Parameter(Mandatory = $False)]
+    [Switch]$NoBootPrompt
 )
 
 #Requires -RunAsAdministrator
@@ -701,6 +703,19 @@ $autounattendXml= @"
 </unattend>
 "@
 $autounattendXml | Set-Content -Path "$tempIsoDir\autounattend.xml" -Force
+
+# Configure Uefi no prompt boot
+if ($NoBootPrompt) {
+    Write-Verbose "Configuring BIOS no prompt boot..."
+    Move-Item -Path "$tempIsoDir\boot\bootfix.bin" -Destination "$tempIsoDir\boot\bootfix.bin.bak" -Force | Out-Null
+    Write-Verbose "Configuring UEFI no prompt boot..."
+    Move-Item -Path "$tempIsoDir\efi\microsoft\boot\efisys.bin" -Destination "$tempIsoDir\efi\microsoft\boot\efisys.bin.bak" -Force | Out-Null
+    Move-Item -Path "$tempIsoDir\efi\microsoft\boot\cdboot.efi" -Destination "$tempIsoDir\efi\microsoft\boot\cdboot.efi.bak" -Force | Out-Null
+    Move-Item -Path "$tempIsoDir\efi\microsoft\boot\efisys_noprompt.bin" -Destination "$tempIsoDir\efi\microsoft\boot\efisys.bin" -Force | Out-Null
+    Move-Item -Path "$tempIsoDir\efi\microsoft\boot\cdboot_noprompt.efi" -Destination "$tempIsoDir\efi\microsoft\boot\cdboot.efi" -Force | Out-Null
+} else {
+    Write-Verbose "Skipping UEFI no prompt boot configuration as NoPromptBoot is set to false."
+}
 
 # Create ISO
 Write-Verbose "Creating $PSScriptRoot\$($DriverManufacturer)-$($DriverModel)_$($SupportedOsVersionShort)_$($Build)_$($LanguageCode)_$($Architecture)_autounattend.iso..."

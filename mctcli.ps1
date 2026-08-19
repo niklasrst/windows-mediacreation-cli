@@ -89,7 +89,9 @@ Param(
     [ValidateSet("Dell", "Lenovo", "HP")]
     [String]$DriverManufacturer,
     [Parameter(Mandatory = $False)]
-    [String]$DriverModel
+    [String]$DriverModel,
+    [Parameter(Mandatory = $False)]
+    [Switch]$NoBootPrompt
 )
 
 #Requires -RunAsAdministrator
@@ -745,6 +747,19 @@ $autounattendXml= @"
 </unattend>
 "@
 $autounattendXml | Set-Content -Path "$UsbDriveLetter\autounattend.xml" -Force
+
+# Configure Uefi no prompt boot
+if ($NoBootPrompt) {
+    Write-Verbose "Configuring BIOS no prompt boot..."
+    Move-Item -Path "$UsbDriveLetter\boot\bootfix.bin" -Destination "$UsbDriveLetter\boot\bootfix.bin.bak" -Force #| Out-Null
+    Write-Verbose "Configuring UEFI no prompt boot..."
+    Move-Item -Path "$UsbDriveLetter\efi\microsoft\boot\efisys.bin" -Destination "$UsbDriveLetter\efi\microsoft\boot\efisys.bin.bak" -Force #| Out-Null
+    Move-Item -Path "$UsbDriveLetter\efi\microsoft\boot\cdboot.efi" -Destination "$UsbDriveLetter\efi\microsoft\boot\cdboot.efi.bak" -Force #| Out-Null
+    Move-Item -Path "$UsbDriveLetter\efi\microsoft\boot\efisys_noprompt.bin" -Destination "$UsbDriveLetter\efi\microsoft\boot\efisys.bin" -Force #| Out-Null
+    Move-Item -Path "$UsbDriveLetter\efi\microsoft\boot\cdboot_noprompt.efi" -Destination "$UsbDriveLetter\efi\microsoft\boot\cdboot.efi" -Force #| Out-Null
+} else {
+    Write-Verbose "Skipping UEFI no prompt boot configuration as NoBootPrompt is set to false."
+}
 
 # Cleanup
 Write-Verbose "Cleaning up temporary files"
