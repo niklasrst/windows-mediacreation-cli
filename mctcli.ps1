@@ -14,8 +14,8 @@
     The default is x64.
 
 .PARAMETER -Build
-    The build number of Windows to download. Valid values are "25H2", "24H2", "23H2" or "22H2".
-    The default is the 25H2 build.
+    The build number of Windows to download. Valid values are "26H2", "25H2", "24H2", "23H2" or "22H2".
+    The default is the 26H2 build.
 
 .PARAMETER -LanguageCode
     The language code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
@@ -48,8 +48,8 @@
    Enable verbose output.
 
 .EXAMPLE
-    .\mctcli.ps1 -Architecture amd64 -Build 24H2 -LanguageCode "de-de" -RegionCode "de-de" -Edition Pro -UsbDriveLetter "D:" -DriverManufacturer Dell -DriverModel "Latitude-5440" -Verbose
-    This example downloads the Windows 11 x64 ESD file with build 24H2 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable media on the drive D:.
+    .\mctcli.ps1 -Architecture amd64 -Build 26H2 -LanguageCode "de-de" -RegionCode "de-de" -Edition Pro -UsbDriveLetter "D:" -DriverManufacturer Dell -DriverModel "Latitude-5440" -Verbose
+    This example downloads the Windows 11 x64 ESD file with build 26H2 in English (US) for the CLIENTBUSINESS_VOL edition and creates a bootable media on the drive D:.
 
 .OUTPUTS
     ---
@@ -74,8 +74,8 @@ Param(
     [ValidateSet("amd64", "arm64")]
     [String]$Architecture = "x64",
     [Parameter(Mandatory = $True)]
-    [ValidateSet("25H2", "24H2", "23H2", "22H2")]
-    [String]$Build = "25H2",
+    [ValidateSet("26H2", "25H2", "24H2", "23H2", "22H2")]
+    [String]$Build = "26H2",
     [Parameter(Mandatory = $True)]
     [String]$LanguageCode = "en-us",
     [Parameter(Mandatory = $False)]
@@ -211,6 +211,7 @@ switch ($Build){
     "23H2" { $BuildVer = "22631" }
     "24H2" { $BuildVer = "26100" }
     "25H2" { $BuildVer = "26200" }
+    "26H2" { $BuildVer = "26300" }
 }
 Write-Verbose "Build version converted to $BuildVer..."
 
@@ -243,6 +244,7 @@ switch ($Windows) {
     }
     "11" { 
         switch ($Build) {
+            "26H2" { $Url = "https://github.com/niklasrst/windows-mediacreation-cli/raw/refs/heads/main/cabs/windows11-26h2-products.cab" }
             "25H2" { $Url = "https://github.com/niklasrst/windows-mediacreation-cli/raw/refs/heads/main/cabs/windows11-25h2-products.cab" }
             "24H2" { $Url = "https://download.microsoft.com/download/8e0c23e7-ddc2-45c4-b7e1-85a808b408ee/Products-Win11-24H2-6B.cab" }
             "23H2" { $Url = "https://download.microsoft.com/download/6/2/b/62b47bc5-1b28-4bfa-9422-e7a098d326d4/products_win11_20231208.cab" }

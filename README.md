@@ -9,7 +9,7 @@ This repo contains my solution of a media creation tool to create Windows Instal
 
 ## Introduction
 I´ve created this script as I wanted to automate the creation of usb-drives with Windows installation media.
-So I came up with the idea to create a parameter based PowerShell script to ask for the needed details and then fully automated create a usb-drive, containing the Windows installation media. It currently supports Windows 10 in 22H2 and Windows 11 from 22H2 up to 25H2.
+So I came up with the idea to create a parameter based PowerShell script to ask for the needed details and then fully automated create a usb-drive, containing the Windows installation media. It currently supports Windows 10 in 22H2 and Windows 11 from 22H2 up to 26H2.
 
 ## How to use it?
 
@@ -17,10 +17,10 @@ So I came up with the idea to create a parameter based PowerShell script to ask 
 Use this command to run the script with the minimal required set of parameters to create a usb-based installation media.
 ```powershell
 # Minimal parameter setup
-.\mctcli.ps1 -Windows 11 -Architecture amd64 -Build 25H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:"
+.\mctcli.ps1 -Windows 11 -Architecture amd64 -Build 26H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:"
 
 # Maximal parameter setup to inject a oem driver pack
-.\mctcli.ps1 -Windows 11 -Architecture amd64 -Build 25H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:" -DriverManufacturer Dell -DriverModel "Latitude 5450" -Verbose
+.\mctcli.ps1 -Windows 11 -Architecture amd64 -Build 26H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -UsbDriveLetter "E:" -DriverManufacturer Dell -DriverModel "Latitude 5450" -Verbose
 ```
 
 Currently the `mctcli.ps1` script only supports to download one oem enterprise driver pack. 
@@ -41,10 +41,10 @@ If you need to add more drivers, use the `add-multi-drivers.ps1` script like thi
 Use this command to run the script with the minimal required set of parameters to create a ISO-based installation media.
 ```powershell
 # Minimal parameter setup
-.\mctiso.ps1 -Windows 11 -Architecture amd64 -Build 25H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro
+.\mctiso.ps1 -Windows 11 -Architecture amd64 -Build 26H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro
 
 # Maximal parameter setup to inject a oem driver pack
-.\mctiso.ps1 -Windows 11 -Architecture amd64 -Build 25H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -DriverManufacturer Dell -DriverModel "Latitude 5450" -Verbose
+.\mctiso.ps1 -Windows 11 -Architecture amd64 -Build 26H2 -LanguageCode "en-us" -RegionCode "en-us" -Edition Pro -DriverManufacturer Dell -DriverModel "Latitude 5450" -Verbose
 ```
 A created ISO can be used for PXE-booting or if you need to emulate a iso as a disk/dvd drive for installation.
 
@@ -63,8 +63,8 @@ Check out the following section to learn what the parameters are used for.
     The default is x64.
 
 .PARAMETER -Build
-    The build number of Windows to download. Valid values are "25H2", "24H2", "23H2" or "22H2".
-    The default is the 25H2 build.
+    The build number of Windows to download. Valid values are "26H2", "25H2", "24H2", "23H2" or "22H2".
+    The default is the 26H2 build.
 
 .PARAMETER -LanguageCode
     The language code of Windows to download. Valid values for example are en-us, de-de, fr-fr, es-es, it-it.
